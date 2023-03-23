@@ -3,6 +3,8 @@ XEUX - Multiprocessing Operating System for Atari XL/XE
 
 -----
 
+(English translation follows)
+
 Niniejsze repozytorium zawiera kod źródłowy, środowisko, narzędzia i demo produktu, który powstał w ramach mojej pracy inżynierskiej w 2006 roku. 
 
 Tytuł pracy jest odrobinę na wyrost być może, gdyż sporo jeszcze brakuje do tego, żeby można było ten produkt nazwać pełnoprawnym systemem operacyjnym, raczej jest pewnym proof of concept tego, że teoretycznie jakby chcieć, to można. 
