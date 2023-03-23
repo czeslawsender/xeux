@@ -1,0 +1,255 @@
+; 12.06.2006
+;	pierwsza przymarka do proto-shella.
+;
+		.OU D1:\XEUX\ROB10\BARSZCZ.10
+		.OR $1000
+; includes
+		.IN ROBI4.MAE   ; zmienne systemowe, wektory skokow
+		.IN ROBP3.MAE   ; adresy procedur z innych modulow
+;
+; PRINT_M
+;	23.09.2005
+;
+!!!PRINT_M_ .MD
+		JSR PRINT_P_
+		.BY :1 :2 :3 :4 :5 :6 :7 :8 :9 0
+		.ME
+;
+CTATP		PRINT_M_ $9B 'prototypowy shell - barszcz 0.1' $9B $9B
+CLI		PRINT_M_ 'barszcz# '
+		LDA #$FF
+		STA CMDCRS	            ; zerujemy kursor komendy
+?LUP		JSR KGETCH_            ; czytamy znak
+		CMP #$9B	            ; czy to RETURN?
+		BNE ?DALI	            ; jezeli tak, to do parsera
+		LDX CMDCRS
+		BPL PARSE	            ; ale tylko, jezeli jest co
+			            ; parsowac
+		PRINT_M_ $9B $9B
+		JMP CLI
+?DALI		CMP #$1C	            ; czy kursor UP?
+		BEQ GETHIST            ; jezeli tak, to odtworz
+			            ; komende historyczna
+		CMP #'?
+		BNE ?NIEHELP
+		LDX CMDCRS
+		BPL ?NIEHELP
+		JMP HELP
+?NIEHELP	CMP #$7E	            ; a moze backspace?
+		BNE ?CHAR
+		LDX CMDCRS
+		BMI ?BEG	            ; czy aby nie probujemy
+			            ; sobie kasowac prompta?
+		JSR OUTCH_	            ; skasujmy znak z ekranu
+		DEC CMDCRS	            ; i cofamy 'kursor' komendy
+?BEG		JMP ?LUP
+?CHAR		LDX CMDCRS
+		CPX CMDBUFLN           ; czy to nie koniec bufora?
+		BEQ ?LUP
+		INX
+		STA COMMAND,X          ; zapisujemy znak do bufora
+			            ; komendy
+		STX CMDCRS
+		JSR OUTCH_	            ; wypisujemy na ekran
+		JMP ?LUP
+GETHIST	LDA CMDCRSH
+		BPL ?JEST
+		JMP CLI?LUP            ; czy w ogole jest jakas
+			            ; historia?
+?JEST		LDX #$FF
+?LUP		INX
+		LDA HISTORY,X
+		STA COMMAND,X
+		CPX CMDCRSH
+		BNE ?LUP
+?OK		STX CMDCRS
+		LDA #$FF
+		STA CMDCRSH
+; wypisywanie historii
+PISZ		LDX #$FF
+?LUP		INX
+		STX CMDTMP
+		LDA COMMAND,X
+		JSR OUTCH_
+		LDX CMDTMP
+		CPX CMDCRS
+		BCC ?LUP
+?JUZ		JMP CLI?LUP
+;
+PARSE		JSR OUTCH_
+		LDX #$FF
+?LUP		INX
+		STX CMDTMP
+; konwersja liter komendy (do pierwszej spacji) na upper case
+		LDA COMMAND,X
+		CMP #32
+		BEQ ?SPACJA     ; jezeli spacja, to znaczy, ze
+			     ; dalej ida argumenty i ich nie
+			     ; konwertujemy.
+		CMP #'a
+		BCC ?NIELIT
+		CMP #'z
+		BCC ?LIT
+		BNE ?NIELIT
+?LIT		SEC
+		SBC #$20
+		STA COMMAND,X
+?NIELIT	LDX CMDTMP
+		CPX CMDCRS
+		BCC ?LUP
+?SPACJA	JMP PARSE2
+;
+PARSE2
+; przepisanie do historii
+		LDX #$FF
+?LUP		INX
+		STX CMDTMP
+		LDA COMMAND,X
+		STA HISTORY,X
+;		JSR OUTCH_
+		LDX CMDTMP
+		CPX CMDCRS
+		BCC ?LUP
+		STX CMDCRSH
+; przepisano do history
+;		PRINT_M_ $9B
+; zakladamy, ze nie ma juz komend, wywolujemy zewnetrzny
+; proces...
+EXTERNAL	LDY #$00	         ; z komendy -> filename (+.XX)
+		LDX #$02
+?LUP		LDA COMMAND,Y
+		CMP #32
+		BNE ?NIESPAC
+		DEY
+		JMP ?PLUSXX
+?NIESPAC	STA FNAME,X
+		INX
+		CPY CMDCRS
+		BEQ ?PLUSXX
+		CPY #$07
+		BEQ ?PLUSXX
+		INY
+		JMP ?LUP
+?PLUSXX	LDA #'.
+		STA FNAME,X
+		INX
+		LDA #'X
+		STA FNAME,X
+		INX
+		STA FNAME,X
+		INX
+		LDA #$9B
+		STA FNAME,X         ; + ".XX" +$9B
+; w FNAME powinna sie	znalezc pierwsza komenda (8 chrs)+.XX+$9B
+; teraz przekazujemy parametry:
+DAJPAR		CPY CMDCRS	         ; jezeli to nie koniec znakow
+		BNE ?WIECEJ
+		LDA #$00
+		STA PRLPRN_
+		JMP PODAJ
+?WIECEJ	INY	         ; sprawdzamy, czy po 8 znakach
+		LDA COMMAND,Y       ; ktore weszly w sklad FNAME
+		CMP #32	         ; nastepuje spacja, czy jeszcze
+		BEQ ?SA	         ; jakies znaki. jezeli znaki, to
+		BNE DAJPAR	         ; czekamy na spacje.
+?SA		INY
+		LDA COMMAND,Y
+		CMP #'&             ; a moze to znak, zeby forkowac?
+		BEQ FORKUJ
+		DEY	         ; nie forkowac, przekazywac
+			         ; parametry po prostu
+		STY CMDTMP
+		LDA CMDCRS
+		SEC
+		SBC CMDTMP	         ; CMDCRS-Y=ilosc bajtow param.
+		STA PRLPRN_         ; do PRLPRN_
+		LDA #<COMMAND
+		SEC	         ; +1
+		ADC CMDTMP	         ; od ktorego miejsca sie
+			         ; zaczynaja one pokazujemy
+		STA PRLPAX_
+		LDA #>COMMAND
+		STA PRLPAX_+1
+		BCC PODAJ
+		INC PRLPAX_+1
+; i wczytujemy
+PODAJ		LDA #<FNAME
+		STA PRFNAME_
+		LDX #>FNAME
+		STX PRFNAME_+1
+		JSR EXEC_
+		BCC ?RADOSC
+		JSR NUM2SCR_
+;
+?RADOSC	JMP CLI
+FORKUJ		INY
+		LDA COMMAND,Y
+		SEC
+		SBC #$30	      ; #'0 minus #$30 rowna sie #$00
+		CMP MAXTTYS_     ; czy numer konsoli miesci sie w
+			      ; dopuszczalnym zakresie?
+		BCC ?DALEJ
+		BEQ ?DALEJ
+		PRINT_M_ 'console number out of range' $9B $9B         $9B $9B
+		JMP CLI
+?DALEJ		PHA	         ; numer konsoli na stos
+DAYPAR		CPY CMDCRS	         ; jezeli to nie koniec znakow
+		BNE ?WIECEJ
+		LDA #$00
+		STA PRLPRN_
+		JMP DAWAJ
+?WIECEJ	INY	         ; sprawdzamy, czy po &n
+		LDA COMMAND,Y
+		CMP #32	         ; nastepuje spacja, czy jeszcze
+		BEQ ?SA	         ; jakies znaki. jezeli znaki, to
+		BNE DAYPAR	         ; czekamy na spacje.
+?SA		STY CMDTMP
+		LDA CMDCRS
+		SEC
+		SBC CMDTMP	         ; CMDCRS-Y=ilosc bajtow param.
+		STA PRLPRN_         ; do PRLPRN_
+		LDA #<COMMAND
+		SEC	         ; +1
+		ADC CMDTMP	         ; od ktorego miejsca sie
+			         ; zaczynaja one pokazujemy
+		STA PRLPAX_
+		LDA #>COMMAND
+		STA PRLPAX_+1
+		BCC DAWAJ
+		INC PRLPAX_+1
+; i wczytujemy
+DAWAJ		LDA #<FNAME
+		STA PRFNAME_
+		LDX #>FNAME
+		STX PRFNAME_+1
+		PLA	          ; numer konsoli ze stosu
+		TAY	          ; i do Y.
+		JSR FORK_
+		BCC ?RADOSC
+		JSR NUM2SCR_
+?RADOSC	JMP CLI
+HELP		PRINT_M_ $9B $9B 'internal commands: ' $9B
+		PRINT_M_  ' ver    - shows version' $9B
+		PRINT_M_  ' uname  - reads system version' $9B
+		PRINT_M_  ' rotor  - controls idle rotor' $9B
+		PRINT_M_  ' clear  - clears the screen' $9B
+		PRINT_M_  ' ?      - shows this help' $9B $9B
+		PRINT_M_  'other commands will be executed.' $9B
+		PRINT_M_  'add &<tty> before the parameters' $9B
+		PRINT_M_  'to fork process to the other tty' $9B $9B
+		JSR CLI
+COMMAND	.BY '1234567890'
+		.BY '1234567890'
+		.BY '1234567890'
+		.BY '1234567890'
+HISTORY	.BY '1234567890'
+		.BY '1234567890'
+		.BY '1234567890'
+		.BY '1234567890'
+CMDBUFLN	.BY 38	; dlugosc bufora na komende-2
+FNAME		.BY 'D:FILENAME.XX' $9B
+CMDCRS		.BY $FF	; pozycja 'kursora' komendy
+CMDCRSH	.BY $FF	; historyczna pozycja kursora komendy
+CMDTMP		.BY $00
+;
+

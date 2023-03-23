@@ -1,0 +1,495 @@
+		.OU D1:\XEUX\ROB10\ROBD.OBJ
+		.OR $3000
+;
+; INCLUDES
+;
+		.IN ROBI4.MAE   ; zmienne systemowe, wektory skokow
+		.IN ROBP3.MAE   ; adresy procedur z innych modulow
+;
+_KILL		JMP KILL__	    ; $3000
+_SIGIVEC	JMP SIGIVEC__  ; $3003
+_SIGRET	JMP SIGRET__   ; $3006
+_FORK		JMP FORK__	    ; $3009
+_EXEC		JMP EXEC__	    ; $300C
+_WRITE		JMP WRITE__    ; $300F
+_TERMINAT	JMP TERMINATE__; $3012
+_IDLEINI	JMP IDLEINI__  ; $3015
+_PRTBINI	JMP PRTBINI__  ; $3018
+_IOCBLKP	JMP IOCBLKP_   ; $301B
+_TERMWDATA	JMP TERMWDATA__; $301E
+;
+; SIGnal: RETurn
+;	08.06.2006
+;	procedura do ktorej nalezy wykonac skok (JMP) na
+;	zakonczenie obslugi sygnalu. dla procesow uzytkownika.
+;
+SIGRET__  PLA
+		TAY
+		PLA
+		TAX
+		PLA
+		RTI
+;
+; KILL
+;	05.06.2006
+;	procedura wysylajaca do procesu sygnal.
+;	na wejsciu w A	numer sygnalu, w X numer procesu do
+;	ktorego kierujemy sygnal.
+;
+KILL__	CPX	MAXPROC_ ;	czy jest w ogole taki proces, do
+		         ;	ktorego chcemy cos wysylac?
+	BCC	?DALEJ
+	BEQ	?DALEJ
+	LDX	#$FA     ;	ERROR:="proces number exceeded"
+	SEC
+	RTS
+?DALEJ	CPX	#$00
+	BNE	?MMUP
+	LDX	#$F7     ;	ERROR:="cannot send to idle process"
+	SEC
+	RTS
+?MMUP	CMP	#31
+	BCC	?WAK
+	BEQ	?WAK
+	LDX	#$F6     ;	ERROR:="signal number out of range"
+	SEC
+	RTS
+?WAK	PHA		  ; sygnal na stos
+	LDA	PR.STATE_,X  ; czy ten proces w ogole dziala?
+	BNE	?SIUP
+	PLA
+	LDX	#$F9     ;	ERROR:="process not running"
+	SEC
+	RTS
+?SIUP	LDA	PR.SIGNAL_,X ; czy taki proces nie oczekuje juz
+			  ; sygnalu kill?
+	CMP	#$09
+	BNE	?NIE
+	PLA
+	LDX	#$F8     ;	ERROR:="higher priority signal waiting"
+	SEC
+	RTS
+?NIE	PLA
+	STA	PR.SIGNAL_,X
+	LDA	PR.STATE_,X
+	ORA	#$80	; ustawiamy bit 7 PR.STATE (sig waiting)
+	STA	PR.STATE_,X
+	LDA	RUNLEVEL_
+	ORA	#$20	; i bit 5 RUNLEVEL_ (signal waiting)
+	STA	RUNLEVEL_
+	LDX	#$00
+	CLC
+	RTS
+;
+; IDLE	process INI
+;	05.06.2006
+;	taka krotka procedurka wpisujaca co trzeba do strony
+;	bazowej idle procesowi
+;
+IDLEINI__	LDX #$00
+		STX CURPRO_
+		LDA #$03
+		STA PR.STATE_,X
+		RTS
+;
+; PRocess' TaBle INI
+;	06.06.06 - ho-ho-ho,
+;	inicjalizacja tablicy procesow, w koncu trzeba.
+;
+PRTBINI__	LDA #$00
+		LDX MAXPROC_
+?LUP		STA PR.STATE_,X
+		DEX
+		BPL ?LUP
+		RTS
+;
+; SIGnal: Install VECtor
+;	666
+;	procedura instalujaca wektor procedury obslugi
+;	sygnalu w tablicy SIGVECx_
+;	na wejsciu: w Y numer sygnalu, w AX adres procedury
+;		        w notacji: A-LSB, X-MSB.
+;
+SIGIVEC__	PHA
+		TXA
+		PHA   ; adres (AX) na stos
+		DEY	    ; odejmujemy 1 od Y, bo tak jest
+			    ; tabela zbudowana (1 to ,0)
+		LDA SIGTBL_,Y  ; odczytujemy offset do SIGVECx_
+		ASL
+		ASL	    ; sprawdzamy, czy nie $FE-$FF
+		BCS ?NONO
+		ASL
+		ASL
+		ASL
+		ASL	    ; *64
+		STA SIGTMP0_   ; do zmiennej
+		LDA #>SIGVEC1_ ; MSB SIGVEC1_
+		STA SIGTMP0_+1 ; do zmiennej
+		BCC ?RAZ	    ; SIGVEC1_ wystarczy
+		INC SIGTMP0_+1 ; a tu SIGVEC2_ na miejscu jest
+?RAZ		LDA CURPRO_
+		ASL	    ; *2, bo dwubajtowe sa wektory
+		TAY	    ; do Y, bo tym bedzemy indeksowac
+		INY
+		PLA	    ; X (MSB) ze stosu
+		STA (SIGTMP0_),Y ; do tablicy
+		DEY
+		PLA	    ; A (LSB) ze stosu
+		STA (SIGTMP0_),Y ; i do tablicy
+		LDX #$00
+		CLC
+		RTS
+?NONO		PLA
+		PLA
+		LDX #$F5	    ; ERROR=$F5 "signal not supported"
+		SEC
+		RTS
+;
+; FORK
+;	10.06.2006
+;	uruchomienie nowego procesu wspolbieznie.
+;	moze przyjac argumenty na wejsiciu, ale nie ma co
+;	liczyc, ze proces rodzicowi cos odda ta sama droga.
+;	parametry wejsciowe:
+;		     Y - numer konsoli dla procesu
+;	  PRFNAME_ - adres nazwy pliku do wczytania
+;	   PRLPRN_ - ilosc (bajty) parametrow przekazywanych
+;		         procesowi
+;	   PRLPAX_ - adres poczatku przestrzeni wartosci
+;		         parametrow przekazywanych (jezel >0).
+;	na wyjsciu:
+;		     X - kod bledu (lub $00 - sukces)
+;	   flaga C - ustawiona jezeli blad
+;		     A - slot procesu, jezeli sukces.
+;
+FORK__		CPY MAXTTYS_
+		BCC ?WZAKR
+		BEQ ?WZAKR
+		LDX #$F2	      ; ERROR:='unable to open tty'
+		SEC
+		RTS
+?WZAKR		LDA TTYOWNT_,Y   ; czy ta konsola aby nie jest juz
+			      ; zajeta?
+		CMP #$FF
+		BEQ ?NIEJEST
+		LDX #$F3	      ; ERROR:='tty busy'
+		SEC
+		RTS
+?NIEJEST	TYA	      ; numer konsoli dla procesu na stos
+		PHA
+		LDX CURPRO_
+?CZEK		JSR PRCZEK
+		BCC ?JEDZ
+		JMP ?CZEK	      ; jak juz odda, to sprawdzmy, czy
+			      ; na pewno lock sie zwolnil.
+?JEDZ		STX PRREADL_     ; zalokujmy bufor numerem procesu
+		JSR PRREAD_      ; wczytac do bufora
+		BCS ?BLADA
+?WSAD		PLA	      ; numer konsoli ze stosu
+		TAY	      ; do Y
+		LDA #<TMPSPACE_  ; adres bufora do AX
+		LDX #>TMPSPACE_
+		JSR PRLOAD_
+		BCS ?BLADB
+?OKEJ		PHA	      ; slot do ktorego wczytano proces
+			      ; na stos.
+		JSR PRFREE	      ; zwolnijmy lock na buforze i
+			      ; powiadommy o tym ewentualnych
+			      ; oczekujacych.
+		PLA	      ; slot procesu wczytanego
+		JSR PRNAME
+;		PLA	      ; slot procesu wczytanego
+;			      ; PRNAME ma zostawic nietkniete w A
+		LDX #$00	      ; zero doniczek na oknie
+			      ;         - znak sukcesu!
+		CLC
+		RTS
+?BLADA		PLA	      ; numer konsol zabrac!
+?BLADB		TXA	      ; kod bledu na stos
+		PHA
+		JSR PRFREE	      ; zwalniamy lock na buforze
+		PLA
+		TAX	      ; kod bledu przekazujemy w X
+		SEC
+		RTS	      ; i wracamy
+;
+PRFREE		LDX #$00
+?LUP		LDA PR.IOQUE_,X  ; sprawdzamy, czy ktos czeka na
+			      ; bufor IO?
+		CMP #$FE
+		BEQ ?NEXT
+?INKR		CPX MAXPROC_
+		BEQ ?FINI
+		INX
+		JMP ?LUP
+?NEXT		LDA PR.STATE_,X  ; czy stan ma aby oczekujacy?
+		AND #$0F
+		CMP #$05
+		BNE ?INKR
+		LDA PR.STATE_,X
+		ORA #$40	      ; zapalamy bit 6 PR.STATE_, czyli
+			      ; i/o waiting
+		STA PR.STATE_,X
+		LDA RUNLEVEL_
+		ORA #$40
+		STA RUNLEVEL_    ; i sygnalizjemy to skedulerowi.
+?FINI		LDA #$FF
+		STA PRREADL_     ; kasujemy lock na bufor, oraz
+		LDX CURPRO_
+		STA PR.IOQUE_,X  ; kasujemy oczekiwanie, trzeba bo
+			      ; sobie sprzatac (bez tego tez
+			      ; bedzie dzialac, bo bit 6 nie
+			      ; bedze sie palil, ale ordnung!).
+		RTS
+;
+; kawalek FORK_ jako procedura do wykorzystania w EXEC'u.
+; zachowuje na stosie	akumulator (w ktorym siedzi slot).
+; 11.06.2006
+;
+PRNAME		PHA
+		ASL
+		ASL
+		ASL	      ; slot * 8
+		TAX
+		LDY #$01
+?LUP		LDA (PRFNAME_),Y
+		CMP #':          ; czy to juz dwukropek?
+		BEQ ?TAAK
+		CPY #$02
+		BEQ ?KRET
+		BNE ?LUP
+?TAAK		INY
+?MMUP		LDA (PRFNAME_),Y
+		CMP #$9B	      ; czy nazwa krociutka i bez kropki?
+		BEQ ?RET
+		CMP #'.          ; a moze juz kropka?
+		BEQ ?KRET
+		STA PR.NAME_,X
+		TXA
+		AND #$08	      ; najmlodsze 3 bity
+		CMP #$07	      ; sprawdzamy, czy juz 8 znakow
+		BEQ ?WYLAZL
+		INX
+		INY
+		JMP ?MMUP
+?KRET		LDA #$9B
+?RET		STA PR.NAME_,X   ; krotka nazwe zakanczamy returnem
+		PLA
+?WYLAZL	RTS
+;
+; to samo z PRCZEK.
+; 11.06.2006
+;
+PRCZEK		LDA PRREADL_     ; czy bufor jest uzywany?
+		CMP #$FF
+		BEQ ?JEDZ
+		LDA #$FE	      ; kod 'planisty' do IOQUE_
+		STA PR.IOQUE_,X  ; wprowadzamy, zeby zasygnalizowac
+			      ; na co czekamy
+		LDA PR.STATE_,X
+		AND #$0F	      ; tylko 4 mlodsze bity statusu
+		CMP #$06	      ; czy proces w stane KILL?
+		BEQ ?KILL
+		CMP #$08	      ; albo STOPPED?
+		BEQ ?KILL
+		LDA PR.STATE_,X
+		AND #$F0	      ; zachowujemy starsze 4 bity
+		ORA #$07	      ; STATE:='waiting to be queued'
+		STA PR.STATE_,X
+?KILL		BRK	      ; zawolac skeduler, zeby nam zabral
+		BRK	      ; zasoby, bo niepotrzebne.
+		SEC	      ; nie wiadomo, czy zasoby wolne.
+		RTS
+?JEDZ		CLC	      ; wiadomo, ze zasoby wolne.
+		RTS
+;
+; PRocess READ
+;	10.06.2006
+;	wczytuje przez	Atari OS SIO proces do bufora
+;
+PRREAD_
+		LDA RUNLEVEL_
+		ORA #$80
+		STA RUNLEVEL_     ; zatrzymujemy prace skedulera
+		JSR IOCBLKP
+		TXA
+		PHA	; numer kanalu tu sobie schowamy...
+		LDA #$03 ;	OPEN     otwieramy kanal CIO
+		STA ICCMD,X
+		LDA PRFNAME_      ; nazwa pliku podana w PRFNAME_
+		STA ICBUFA,X
+		LDA PRFNAME_+1
+		STA ICBUFA+1,X
+		LDA #$04	       ; $04-READ: kanal do czytania
+		STA ICAX1,X
+		JSR JCIOMAIN
+		CPY #$01	       ; czy $01 (kod sukcesu)?
+		BEQ ?DALI
+?AUT		LDA RUNLEVEL_
+		AND #$7F
+		STA RUNLEVEL_     ; wznawiamy prace skedulera.
+		PLA	; numer kanalu sciagnijmy zanim wywola
+			; katastrofe ;)
+		TYA
+		TAX	; kod bledu do X
+		SEC
+		RTS	; i wracamy
+?DALI		PLA	; numer kanalu ze stosu
+		PHA	; i znow na stos
+		TAX
+		LDA #$07	         ; $07-GET BYTES
+		STA ICCMD,X
+		LDA #<TMPSPACE_     ; adres bufora
+		STA ICBUFA,X
+		LDA #>TMPSPACE_
+		STA ICBUFA+1,X
+		LDA #$FF
+		STA ICBUFL,X
+		LDA #$06
+		STA ICBUFL+1,X      ; i jego wielkosc
+		JSR JCIOMAIN        ; go CIO
+		CPY #$88 ;	EOF
+		BEQ ?EOF
+		LDY #$F4	         ; ERROR:='binary too long'
+		JMP ?AUT
+?EOF		PLA
+		TAX	       ; numer kanalu ze stosu
+		LDA #$0C ;	CLOSE    zamykamy kanal CIO
+		STA ICCMD,X
+		JSR JCIOMAIN
+		LDA RUNLEVEL_
+		AND #$7F
+		STA RUNLEVEL_     ; wznawiamy prace skedulera
+		LDX #$00	       ; kod sukcesu
+		CLC
+		RTS	       ; i powrot
+;
+; EXECute
+;	11.06.2006
+;	wczytuje proces, uruchamia (przekazujac ewentualne
+;	parametry) w tej samej konsoli. proces rodzic jest
+;	na ten czas zamrozony. budzony po terminacji procesu
+;	przez skeduler.
+;
+EXEC__		LDA ACTTTY_      ; numer konsoli dla procesu na stos
+		PHA
+		LDX CURPRO_
+?CZEK		JSR PRCZEK
+		BCC ?JEDZ
+		JMP ?CZEK	      ; jak juz odda, to sprawdzmy, czy
+			      ; na pewno lock sie zwolnil.
+?JEDZ		STX PRREADL_     ; zalokujmy bufor numerem procesu
+		JSR PRREAD_      ; wczytac do bufora
+		BCS ?BLADA
+?WSAD		PLA	      ; numer konsoli ze stosu
+		TAY	      ; do Y
+		LDA #<TMPSPACE_  ; adres bufora do AX
+		LDX #>TMPSPACE_
+		JSR PRLOAD_
+		BCS ?BLADB
+?OKEJ
+		PHA
+		JSR PRFREE	      ; zwolnijmy lock na buforze i
+			      ; powiadommy o tym ewentualnych
+			      ; oczekujacych.
+		PLA	      ; numer slotu jednak musimy
+			      ; przekiszac, bo PRNAME nie umie
+			      ; sie bez niego znalezc.
+		JSR PRNAME
+		LDA #$FD	      ; kod ''exec'a'' do IOQUE_
+		LDX CURPRO_      ; numer procesu, BARANIE, zaladuj
+		STA PR.IOQUE_,X  ; wprowadzamy, zeby zasygnalizowac
+			      ; na co czekamy
+		LDA PR.STATE_,X
+		AND #$0F	      ; tylko 4 mlodsze bity statusu
+		CMP #$06	      ; czy proces w stane KILL?
+		BEQ ?KILL
+		LDA PR.STATE_,X
+		AND #$F0	      ; zachowujemy starsze 4 bity
+		ORA #$07	      ; STATE:='waiting to be queued'
+		STA PR.STATE_,X
+?KILL		BRK	      ; zawolac skeduler, zeby nam zabral
+		BRK	      ; zasoby, bo niepotrzebne.
+; tutaj potem obsluge	odbioru parametrow trzeba dorobic.
+		RTS
+?BLADA		PLA	      ; numer konsol zabrac!
+?BLADB		TXA	      ; kod bledu na stos
+		PHA
+		JSR PRFREE	      ; zwalniamy lock na buforze
+		PLA
+		TAX	      ; kod bledu przekazujemy w X
+		SEC
+		RTS	      ; i wracamy
+;
+; WRITE
+;	12.06.2006
+;	wypisuje na konsole o podanym w Y numerze napis
+;	pod	adresem przekazanym w AX.
+;
+WRITE__	STA TEMP0_
+		STX TEMP0_+1     ; adres bufora wiadomosci do TEMP0_
+		LDA ACTTTY_
+		PHA	      ; aktualna konsole na stos
+		TYA
+		JSR PTTYSWT_     ; zmieniamy konsole na docelowa
+		LDY #$00
+		LDA (TEMP0_),Y   ; pobieramy dlugosc wiadomosci
+		TAX	      ; wrzucamy do X, ktore posluzy
+			      ; nam za licznik do 0.
+?LUP		INY
+		TXA
+		PHA
+		TYA
+		PHA	      ; X i Y na stos, bo OUTCH_ nam je
+			      ; zmarnuje
+		LDA (TEMP0_),Y
+		JSR OUTCH_	      ; wypisujemy na ekran
+		PLA
+		TAY
+		PLA
+		TAX	      ; zbieramy rejestry ze stosu
+		DEX
+		BNE ?LUP
+		PLA	      ; sciagamy numer konsoli
+		JSR PTTYSWT_     ; ustawiamy ja
+		RTS	      ; i wracamy.
+;
+; TERMINATE_
+;	12.06.2006
+;	tutaj skacza procesy, jak znudzilo im sie zycie
+;	16.06.2006
+;	dopisujemy kawalek ustawiajacy PRLPRN_ na zero, znaczy
+;	ze nie zwracamy zadnych parametrow rodzicowi. dla
+;	zachowania kompatybilnosci z dotychczas produkowanymi
+;	binarkami, ktore nic o takim mechanizmie nie wiedzialy.
+;
+TERMINATE__ LDA #$00
+		 STA PRLPRN_     ; zero danych do zwrotu
+TERMWDATA__ LDA #$06
+		 LDX CURPRO_
+		 STA PR.STATE_,X
+		 BRK
+		 BRK
+		 JMP TERMWDATA_
+;
+; IOCB	LooKuP
+; 13.12.2005 - by KMK	(http://atariki.krap.pl/)
+; procedura wyszukuje	pierwszy wolny IOCB, po zakonczeniu
+; jezeli skasowany jest znacznik N (liczba dodatnia), to w
+; X znajduje sie pomnozony przez 16 numer IOCB do uzycia
+IOCBLKP_	LDX #$00
+?LOOP		LDA ICCHID,X
+		CMP #$FF
+		BEQ ?FOUND
+		TXA
+		CLC
+		ADC #$10
+		TAX
+		BPL ?LOOP
+		LDY #-95	 ; kod bledu "TOO MANY CHANNELS OPEN"
+		RTS
+?FOUND		LDY #$01
+		RTS
+;
+  

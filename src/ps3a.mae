@@ -1,0 +1,172 @@
+; 08.06.2006
+;      program uzytkowy - ps
+;
+		.OU D1:\XEUX\ROB9\PS3.20
+		.OR $2000
+; includes
+		.IN ROBI4.MAE   ; zmienne systemowe, wektory skokow
+		.IN ROBP3.MAE   ; adresy procedur z innych modulow
+;
+; PRINT_M
+;	23.09.2005
+;
+!!!PRINT_M_ .MD
+		JSR PRINT_P_
+		.BY :1 :2 :3 :4 :5 :6 :7 :8 :9 0
+		.ME
+;
+CTAPT		LDY #$FF
+		STY TRYB
+		PLA	     ; parametrow ilosc ze stosu
+		BEQ ONCE
+		PLA
+		CMP #'k
+		BEQ MANY
+		CMP #'K
+		BEQ MANY
+		PRINT_M_ 'usage: ps [k]' $9B $9B
+		JSR TERMINATE_
+MANY		INC TRYB
+PETLIK		PRINT_M_ $7D
+ONCE		PRINT_M_ $9B
+
+		PRINT_M_ '   PID      STATE     BANK  TTY flg' $9B
+		PRINT_M_ ' #  | NAME   |     LEN + PAG |  I S' $9B
+		PRINT_M_ '-+--+--+-----+------+--+--+--+--+-+' $9B
+?LUB		LDX #$FF
+		STX ROB
+?LUP		INC ROB
+		LDX ROB
+		LDA PR.STATE_,X
+		BEQ ?NEXT
+		JSR WYPISZ
+?NEXT		LDA MAXPROC_
+		CMP ROB
+		BNE ?LUP
+		LDA TRYB
+		BPL PETLA
+		PRINT_M_ $9B
+		JSR TERMINATE_       ; wychodzimy po razie
+PETLA		BEQ KLAWI
+; tutaj moze sie pojawic kod obslugi dzialania w petli z
+; automatycznym uaktualnianiem zawartosci...
+KLAWI		JSR KGETCH_
+		CMP #'q
+		BEQ ?EXIT
+		CMP #'Q
+		BEQ ?EXIT
+		JMP PETLIK
+?EXIT		PRINT_M_ $9B
+		JSR TERMINATE_
+		JSR KGETCH_
+		JMP CTAPT
+WYPISZ		TXA
+		JSR NUM2SCR_
+		PRINT_M_ ' '
+		LDX ROB
+		LDA PR.PID_,X
+		JSR NUM2SCR_
+		PRINT_M_ ' '
+		LDX ROB
+		BNE ?NAME
+		PRINT_M_ 'IDLE   '
+		JMP ?DALI
+?NAME		TXA
+		ASL
+		ASL
+		ASL
+		TAX
+		STX COB
+?LUP		LDY #$00
+		STY BOB
+?MUP		LDX COB
+		LDY BOB
+		LDA PR.NAME_,X
+		CMP #$9B
+		BEQ ?DOPELNIJ
+		JSR OUTCH_
+		LDY BOB
+		CPY #$05
+		BEQ ?DALLI
+		INC COB
+		INC BOB
+		JMP ?MUP
+?CHOP		INY
+		STY BOB
+?DOPELNIJ	PRINT_M_ ' '
+		LDY BOB
+		CPY #$05
+		BNE ?CHOP
+?DALLI		PRINT_M_ ' '
+?DALI		LDX ROB
+		LDA PR.STATE_,X
+		AND #$0F
+;		PHA
+;		JSR NUM2SCR_
+;		PLA
+		CMP #$03
+		BNE ?E1
+		PRINT_M_ 'READY  '
+		JMP ?EN
+?E1		CMP #$04
+		BNE ?E2
+		PRINT_M_ 'RUN    '
+		JMP ?EN
+?E2		CMP #$05
+		BNE ?E3
+		PRINT_M_ 'WAIT   '
+		JMP ?EN
+?E3		CMP #$08
+		BNE ?E4
+		PRINT_M_ 'STOP   '
+		JMP ?EN
+?E4		JSR NUM2SCR_
+		PRINT_M_ '     '
+?EN		LDX ROB
+		BNE ?SA
+		PRINT_M_ '-- -- -- -- - -'
+		JMP ?HOP
+?SA		LDX ROB
+		LDA PR.ZERO_,X
+		SEC
+		SBC PR.PAGE_,X
+		TAX
+		INX
+		TXA
+		JSR NUM2SCR_
+		PRINT_M_ ' '
+		LDX ROB
+		LDA PR.BANK_,X
+		JSR NUM2SCR_
+		PRINT_M_ ' '
+		LDX ROB
+		LDA PR.PAGE_,X
+		JSR NUM2SCR_
+		PRINT_M_ ' '
+		LDX ROB
+		LDA PR.TTY_,X
+		JSR NUM2SCR_
+		PRINT_M_ ' '
+		LDX ROB
+		LDA PR.STATE_,X
+		PHA
+		AND #$40
+		BEQ ?NIEI
+		PRINT_M_ 'x '
+		JMP ?CZYS
+?NIEI		PRINT_M_ '- '
+?CZYS		PLA
+		AND #$80
+		BEQ ?NIES
+		PRINT_M_ 'x'
+		JMP ?HOP
+?NIES		PRINT_M_ '-'
+?HOP		PRINT_M_ $9B
+		RTS
+ROB		.BY $00
+BOB		.BY $00
+COB		.BY $00
+TRYB		.BY $FF
+;
+
+

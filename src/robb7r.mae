@@ -1,0 +1,889 @@
+		.OU D1:\XEUX\ROB9\ROBB.OBJ
+		.OR $9000
+;
+; INCLUDY
+		.IN ROBI4.MAE
+;
+; TABLICA SKOKOW DO PROCEDUR W ROBB
+;
+_OUTCH_	 JMP OUTCH_      ; $9000
+_TTYINI_	 JMP TTYINI_     ; $9003
+_NUM2SCR_	 JMP NUM2SCR_    ; $9006
+_PRINT_P_	 JMP PRINT_P_    ; $9009
+_WAITKEY_	 JMP WAITKEY_    ; $900C
+_TTYSWT_	 JMP TTYSWT_     ; $900F
+_GETKBUF_	 JMP GETKBUF_    ; $9012
+_PTTYSWT_	 JMP PTTYSWT_    ; $9015
+_GETCH_	 JMP GETCH_      ; $9018
+_CRSHOM_	 JMP CRSHOM_     ; $901B
+_KGETCH_	 JMP KGETCH_     ; $901E
+;
+PRINT_P_	PLA
+		STA TEMP0_
+		PLA
+		STA TEMP0_+1
+		LDY #$01
+?LUP		TYA
+		PHA
+		LDA (TEMP0_),Y
+		CMP #$00
+		BEQ ?JUZ
+		JSR OUTCH_
+		PLA
+		TAY
+		INY
+		JMP ?LUP
+?JUZ		PLA
+		CLC
+		ADC TEMP0_
+		STA TEMP0_
+		BCC ?NO
+		INC TEMP0_+1
+?NO		LDA TEMP0_+1
+		PHA
+		LDA TEMP0_
+		PHA
+		RTS
+;
+; NUMber 2	SCReen
+;	22.09.2005
+;	A w	hex na tty, zachowuje X i Y
+;
+NUM2SCR_	STA N2S_0_
+		TXA
+		PHA
+		TYA
+		PHA
+		LDA N2S_0_
+		AND #240	     ; wybieramy 4 starsze bity
+		CLC
+		ROR
+		ROR
+		ROR
+		ROR
+		TAY
+		LDA N2S_T_,Y    ; 4 bity na hex cyfre
+		JSR OUTCH_
+		LDA N2S_0_
+		AND #15	     ; wybieramy 4 mlodsze bity
+		TAY
+		LDA N2S_T_,Y    ; 4 bity na hex cyfre
+		JSR OUTCH_
+		PLA
+		TAY
+		PLA
+		TAX	     ; przywracamy rejestry
+		LDA N2S_0_	     ; i akumulator
+		RTS
+; N2S_T_ -	tablica konwersji cyfr na znaki ASCII
+N2S_T_		.BY '0' '1' '2' '3' '4' '5' '6' '7'
+		.BY '8' '9' 'A' 'B' 'C' 'D' 'E' 'F'
+N2S_0_		.BY $00	; zmienna tymczasowa dla NUM2SCR_
+;
+; WAIT	until KEYpressed
+;	22.10.2005
+;
+WAITKEY_	JMP KBGBYT_
+;
+; OUTput CHaracter
+;	w akumulatorze	powinien przyjsc znak do wypisania
+;
+OUTCH_		STA ATACHR_
+		CMP #$7E	; czy Back Space?
+		BNE ?PT1_
+		JSR CRSBSP_
+		JMP RETURM_
+?PT1_		CMP #$7D	; czy CLRSCR?
+		BNE ?PT2_
+		JSR CLRSCR_
+		JMP RETURM_ ; i koniec pisania
+?PT2_		JSR RANGE_	 ; czy kursor nie w kosmosie?
+; TeST	for	RETurn
+TSTRET_	LDA ATACHR_
+		CMP #$9B
+		BNE ?PISZ_
+		JSR RTWSCR_ ; zrob wreszcie return (bardzo go
+			 ; mi brakowalo :)).
+		JMP RETURM_
+?PISZ_		JSR PUTCH_	 ; wypisz znak
+		JSR INCCRS_ ; inkrementuj kursor (logiczny)
+		JMP RETURM_
+;
+; RETURN from Monitor
+;	15.05.2006
+;
+RETURM_
+;		JSR GETPLT_  ; podbieramy znak spod kursora
+;		STA OLDCHR_  ; zapisujemy go na pozniej, ze taki byl
+;		LDX DINDEX_  ; to tutaj to by mialo sens, gdybysmy
+			  ; dopuszczali jakies inne tryby niz 0.
+			  ; ale na razie nie dopuszczamy, to nie
+			  ; testujemy bez sensu.
+;		BNE KBOPN_
+;		LDX CRSINH_  ; sprawdzamy, czy kursor ma byc
+;		BNE KBOPN_	  ; jak nie, to nie
+;		EOR #$80
+;		JSR DISPLY_
+; KeyBoard	OPeN
+KBOPN_		LDY DSTAT_	  ; do Y status ekranu
+		LDA #$01
+		STA DSTAT_	  ; DSTAT_ = 1
+		LDA ATACHR_  ; do akumulatora ostatnio uzyty znak
+			  ; ASCII
+; EDitor SPecial
+EDSP_		RTS	  ; koniec RETURM jest destynacja wielu
+			  ; skokow, m.in. wskazuja ja wektory
+			  ; procedur specjalnych kibordu i edytora
+			  ; oraz zapisu na klawiature.
+;
+; CLeaR SCReen
+;	04.08.2005
+;
+CLRSCR_	LDA TTY_
+		STA EKRAN_
+		LDA TTY_+1
+		STA EKRAN_+1 ; przepisanie adresu poczatku
+			  ; pamieci do zmiennej tymczasowej
+		LDA LMARGN_
+		STA COLCRS_
+		LDA #$00
+		STA ROWCRS_
+;	kursor ustawiony na pozycji LMARGN_,0
+		LDA #$00	  ; czyscimy znakiem $00
+		LDX MAXROW_  ; ilosc linii -1
+		INX
+?L_X		LDY MAXCOL_  ; ilosc znakow w linii -1
+		INY
+?L_Y		DEY
+		STA (EKRAN_),Y
+		BNE ?L_Y
+		LDA MAXCOL_
+		SEC
+		ADC EKRAN_
+		STA EKRAN_
+		BCC ?L_1
+		INC EKRAN_+1
+?L_1		LDA #$00	; odtwarzamy $00 w (A) po dodawaniu
+		DEX
+		BNE ?L_X
+		RTS
+;
+; PUT CHaracter
+;	10.08.2005
+;	wypisuje znak z ATACHR_ /kod ATASCII/ na pozycji
+;	kursora (COLCRS_,ROWCRS_) w aktualnej TTY_.
+;
+;	najpierw konwersja ATASCII->Internal
+PUTCH_		LDA ATACHR_
+		TAY
+		ROL A
+		ROL A
+		ROL A
+		ROL A
+		AND #$03
+		TAX
+		TYA
+		AND #$9F
+		ORA AINCC_,X
+;	no i w (A) skonwertowany znak
+;	tera liczymy miejsce w pamieci
+DISPLY_	PHA	; skonwertowany znak na stos
+		JSR CONVRT_     ; znaczy, niech toto nam policzy...
+		PLA	     ; sciagamy z stosu znak (Int)
+		STA (EKRAN_),Y  ; no i wypisujemy go
+		RTS
+;
+; Atascii to INternal	Conversion Constans
+AINCC_		.BY $40,$00,$20,$60
+;
+; INCrement CuRSor
+;	11.08.2005
+;	inkrementuje kursor, jezeli trzeba wywoluje skrola
+;
+INCCRS_	LDA COLCRS_
+		CMP RMARGN_  ; czy aby nie koniec linii?
+		BNE EDCR_?SIUP
+		LDX ROWCRS_
+		CPX MAXROW_  ; czy aby nie ostatnia linia?
+		BNE CRSCRLF_
+		JSR SCRSCR_  ; skroluj ekran w gore o linie
+		JMP EDCR_	  ; i zrob CR
+; CuRSor: Carriage Return, Line Feed
+CRSCRLF_	INC ROWCRS_  ; CR, LF
+; EDitor: Carriage Return
+EDCR_		LDA LMARGN_
+		STA COLCRS_
+		RTS
+?SIUP		INC COLCRS_  ; tylko kursor w prawo
+		RTS
+;
+; SCRoll the SCReen up one line
+;	11.08.2005
+;
+SCRSCR_	LDA TTY_+1
+		STA EKRAN_+1
+		STA SCRTMP_+1
+		LDA TTY_
+		STA SCRTMP_
+		CLC
+		ADC #40
+		STA EKRAN_
+		BCC ?HOP
+		INC EKRAN_+1  ; no i mamy w EKRAN_ poczatek
+			   ; pamieci dla drugiej linii ekranu
+			   ; standardowego (40*24)
+?HOP		LDX MAXROW_   ; MAXROW_ linii do przeniesienia
+?X		LDY #39	      ; 39+
+?Y		LDA (EKRAN_),Y
+		STA (SCRTMP_),Y
+		DEY
+		BNE ?Y
+		LDA (EKRAN_),Y   ; +1 znak w linii
+		STA (SCRTMP_),Y
+		LDA #40
+		CLC
+		ADC EKRAN_
+		STA EKRAN_
+		BCC ?CHOP
+		INC EKRAN_+1
+?CHOP		LDA #40
+		CLC
+		ADC SCRTMP_
+		STA SCRTMP_
+		BCC ?SIUP
+		INC SCRTMP_+1
+?SIUP		DEX	           ; tu jest miejsce na
+			           ; przyszle optymalizacje
+		BNE ?X
+		LDA #0
+		LDY #39	           ; 39+
+?Z		STA (SCRTMP_),Y
+		DEY
+		BNE ?Z
+		STA (SCRTMP_),Y       ; +1 spacja w nowej linii
+		RTS
+;
+; TTY INIt
+;	27.09.2005
+;
+TTYINI_	LDX MEMTOP_+1
+		LDA MEMTOP_
+		DEX	; zmniejszamy MSB o strone
+?OK		LDY #$00	; i zaczynamy wypelniac tablice
+		STY DLIST_	; przy okazji costam zerujac
+		STY TTY_
+?POK		DEX
+		DEX
+		DEX
+		TXA
+		STA TTYTBL_+1,Y ; MSB poczatku pamieci ekranu
+		INY
+		INY
+		DEX
+		CPY #$8	; wypelniamy tylko tty 0-3
+		BNE ?POK
+		STX DLIST_+1 ; a jeszcze nizej stawiamy DLISTe
+		STX TTY_+1	  ; teraz budujemy DLISTe
+		LDY #$00
+		LDA #112
+		STA (TTY_),Y
+		INY
+		STA (TTY_),Y
+		INY
+		LDA #66
+		STA (TTY_),Y ; trzy pierwsze bajty DLISTY:
+			  ; 112,112,66 (16 pustych + 1 GR.0)
+		INY
+		INY	  ; tu adres pamieci ekranu, ale poda
+			  ; go potem procedura przelaczajaca tty
+		LDX #24
+		LDA #$2	  ; nastepnie 24 linie GR.0
+?BOINK		INY
+		STA (TTY_),Y
+		DEX
+		BNE ?BOINK
+		INY
+		LDA #65	  ; wait for VBLANK + skok
+		STA (TTY_),Y
+		INY
+		LDA DLIST_
+		STA (TTY_),Y
+		INY
+		LDA DLIST_+1
+		STA (TTY_),Y
+		LDA #$03	   ; teraz inicjalizujemy kazda z konsol
+?ARGH		PHA
+		STA ACTTTY_
+		JSR PTTYSWT_
+		JSR TTSTRST_
+		PLA
+		PHA
+		JSR TTYSWT_
+		JSR KEYINI_
+		PLA
+		TAX
+		DEX
+		TXA
+		BPL ?ARGH
+		LDA DLIST_	   ; no i wskazujemy ANTICowi nowa DLISTe
+		STA SDLSTL
+		LDA DLIST_+1
+		STA SDLSTL+1
+		RTS
+;
+; TTy SeTtings ReSeT
+;	27.09.2005
+;
+TTSTRST_	LDA #39
+		STA MAXCOL_
+		LDA #24
+		STA MAXROW_
+		LDA #2
+		STA LMARGN_
+		LDA #37
+		STA RMARGN_ ; ustawienie marginesow.
+		LDA #$7D
+		JSR OUTCH_	 ; czysc ekran (ustawiajac kursory)
+		RTS
+;
+; TTY SWiTch
+;	27.09.2005
+;	przelacza widoczna konsole
+;
+TTYSWT_	STA VISTTY_ ; uaktualniamy informacje o tym,
+			 ; ktora konsola jest 'widoczna'
+		ASL A	 ; wpychamy sobie na stos na pozniej
+		TAX	 ; ale tez przepisujemy do (X)
+			 ; uprzednio mnozac przez 2
+		LDY DLIST_
+		INY
+		INY
+		INY	 ; adres displajlisty zwiekszamy o 3
+			 ; tak, zeby 'ustawic' sie na adresie
+			 ; pamieci ekranu
+		STY KONS_
+		LDA DLIST_+1
+		STA KONS_+1
+		LDY #$00
+		LDA TTYTBL_,X
+		STA (KONS_),Y
+		INY
+		INX
+		LDA TTYTBL_,X
+		STA (KONS_),Y    ; i przepisujemy adres pamieci dla
+			      ; danej (w X) tty do DLISTy
+		RTS
+;
+; CPU Interrupt ReQuest
+;	23.09.2005
+;	prototyp procedury czytajacej klawiszure
+;
+CPUIRQ_	TXA
+		PHA
+		TYA
+		PHA	; kisimy rejestry na pozniej
+		LDA KBCODE	; zczytujemy kod nacisnietego klawisza
+; tutaj troche kodu specjalnego do obslugi TTY_
+		CMP #$DF	; shift+ctrl+1
+		BNE ?K2
+		LDA #$00
+		JSR TTYSWT_
+		JMP ?AE
+?K2		CMP #$DE	; shift+ctrl+2
+		BNE ?K3
+		LDA #$01
+		JSR TTYSWT_
+		JMP ?AE
+?K3		CMP #$DA	; shift+ctrl+3
+		BNE ?K4
+		LDA #$02
+		JSR TTYSWT_
+		JMP ?AE
+?K4		CMP #$D8	; shift+ctrl+4
+		BNE ?NIC
+		LDA #$03
+		JSR TTYSWT_
+		JMP ?AE
+?NIC		JMP ?AO	; skoro nic z kontrolnych, to trudno
+?AO		JSR PUTKBUF_
+?AE		PLA
+		TAY
+		PLA
+		TAX
+		PLA	; rejestry i akumulator ze stosu
+		RTI
+;
+; PUT Key in the Buffer
+;	25.09.2005
+;	procedura umieszczajaca kod klawisza w buforze klaw.
+;
+PUTKBUF_	PHA	 ; wrzucmy ten znak na stos na razie
+		LDA VISTTY_ ; ktora konsola aktywna akurat?
+		ASL A
+		TAY
+		LDA TTYTBL_+1,Y  ; adres pamieci konsoli
+		TAX
+		INX
+		INX
+		INX	      ; zwiekszamy tak, by do ostatniej
+			      ; strony sie dobierac
+		STX KLAW_+1
+		LDX #$00
+		STX KLAW_	      ; i zapisujemy sobie do KLAW_
+		LDY #232	      ; pointer BEG bufora klaw. do Y
+		LDA (KLAW_),Y
+		STA PUTKBUF_0_   ; BEG do PUTKBUF_0_ na pozniej
+		LDY #233	      ; pointer END bufora klaw. do Y
+		LDA (KLAW_),Y
+		TAY
+		PLA	      ; znak z akumulatora, na wszelki
+		STA (KLAW_),Y    ; wypadek go zapiszmy do bufora
+; kawalek inkrementujacy rejestr "w kolko"
+		CPY #255	      ; czy END=255?
+		BNE ?AE
+		LDY #233	      ; poczatek bufora: ,234
+?AE		INY	      ; i juz - inkrementowano.
+		CPY PUTKBUF_0_   ; czy "INC" END = BEG?
+		BNE ?OK
+		LDX #$1	      ; Error: 1 - buffer full
+		RTS
+?OK		TYA
+		LDY #233
+		STA (KLAW_),Y      ; zapisujemy nowy pointer END
+			      ; gdzie jego miejsce
+; 04.06.2006 w clio
+		LDY VISTTY_
+		LDA TTYOWNT_,Y   ; ktory proces posiada ta konsole?
+		CMP #$FF
+		BEQ ?BRAK	      ; moze zaden?
+;		STA PUTKBUF_0_   ; tutaj na chwilke
+;		LDA IOQUE_,Y     ; czy ten sam wisi w kolejce dla
+;			      ; tej konsoli (multiplikaca danych
+;			      ; tu jest jakas, potem do usuniecia)
+;		CMP PUTKBUF_0_   ; ten sam?
+;		BNE ?BRAK
+		TAX
+		LDA PR.IOQUE_,X  ; to powyzsze to ja zastapie
+			      ; tym mechanizmem, bo mi sie jakos
+			      ; bardziej teraz podoba
+		CMP VISTTY_
+		BNE ?BRAK	      ; jezeli proces czeka, ale nie na
+			      ; konsole akurat, to nie zawracac
+			      ; mu glowy sygnalami.
+		LDA PR.STATE_,X
+		AND #$0F
+		CMP #$05	      ; czy proces czeka na i/o w ogole?
+		BNE ?BRAK
+		LDA PR.STATE_,X
+;		CMP #$06	      ; jezeli proces do skilownia, to
+;		BEQ ?BRAK	      ; zaden klawisz go nie uratuje.
+;		CMP #$08	      ; to samo dla stopped
+;		BEQ ?BRAK
+		ORA #$40	      ; zapalamy bit 6 PR.STATE_, czyli
+			      ; i/o waiting.
+		STA PR.STATE_,X
+		LDA RUNLEVEL_
+		ORA #$40	      ; zapalamy bit 6 (i/o critical)
+			      ; dla skedulera
+		STA RUNLEVEL_
+;
+?BRAK		LDX #$00	      ; operacja zakonczona sukcesem!
+		RTS
+PUTKBUF_0_	.BY $00	      ; zmienna robocza na znaczniki
+;
+; KEYboard	INIt
+;	26.09.2005
+;	inicjalizacja wektorow BEG i END, przechwyconko
+;	przerwania VKEYBD
+;
+KEYINI_	LDA VISTTY_ ; ktora konsola aktywna akurat?
+		ASL A	 ; mnozymy przez dwa
+		TAY
+		LDA TTYTBL_+1,Y  ; adres pamieci konsoli
+		TAX
+		INX
+		INX
+		INX	      ; zwiekszamy tak, by do ostatniej
+			      ; strony sie dobierac
+		STX KLAW_+1
+		LDX #$00
+		STX KLAW_	      ; i zapisujemy sobie do KLAW_
+		LDY #232
+		LDA #234
+		STA (KLAW_),Y    ; ustawiamy BEG na 234
+		INY
+		STA (KLAW_),Y    ; i END na 234
+		LDA #<CPUIRQ_
+		STA VKEYBD
+		LDA #>CPUIRQ_
+		STA VKEYBD+1
+		RTS
+;
+; Process's TTY SWiTch
+;	29.09.2005
+;	przelacza aktywna konsole dla procesu
+;	na wejsciu w akumulatorze numer konsoli (0-3)
+;	12.06.2006
+;	ze zmianami - teraz juz nie przelacza bez sensu,
+;	kiedy to ta sama konsola jest aktywna.
+;
+PTTYSWT_ ;	CMP ACTTTY_ ; czy aby nie chcemy przelaczac sie
+			 ; na ta sama konsole?
+	  ;	BEQ ?EXIT
+		PHA	 ; informacje o tym, na ktora konsole
+		ASL A	 ; wpychamy sobie na stos na pozniej
+		TAX	 ; ale tez przepisujemy do (X)
+			 ; uprzednio mnozac przez 2
+		LDA TTYTBL_,X
+		STA TTY_
+		LDA TTYTBL_+1,X
+		STA TTY_+1
+		LDY ACTTTY_
+		LDA COLCRS_
+		STA CLCRST_,Y
+		LDA ROWCRS_
+		STA RWCRST_,Y
+		LDA RMARGN_
+		STA RMRGNT_,Y
+		LDA LMARGN_
+		STA LMRGNT_,Y
+		LDA MAXROW_
+		STA MXROWT_,Y
+		LDA MAXCOL_
+		STA MXCOLT_,Y     ; storujemy dane w tablicach, na
+			       ; pozycji ACTTTY_
+		PLA	       ; sciagamy sobie ze stosu info
+			       ; na temat nowej konsoli
+		TAY
+		STY ACTTTY_       ; zmieniamy aktywna konsole
+		LDA CLCRST_,Y
+		STA COLCRS_
+		LDA RWCRST_,Y
+		STA ROWCRS_
+		LDA RMRGNT_,Y
+		STA RMARGN_
+		LDA LMRGNT_,y
+		STA LMARGN_
+		LDA MXROWT_,Y
+		STA MAXROW_
+		LDA MXCOLT_,Y
+		STA MAXCOL_       ; i przywracamy wartosci wedle
+			       ; tego, co w tablicach bylo
+?EXIT		RTS
+;
+; GET Key from the Buffer
+;	28.09.2005
+;	procedura pobierajaca kod klawisza z bufora klawiatury
+;
+GETKBUF_	LDA ACTTTY_ ; ktora konsola aktywna akurat?
+		ASL A
+		TAY
+		LDA TTYTBL_+1,Y  ; adres pamieci konsoli
+		TAX
+		INX
+		INX
+		INX	      ; zwiekszamy tak, by do ostatniej
+			      ; strony sie dobierac
+		STX EKRAN_+1
+		LDX #$00
+		STX EKRAN_	      ; i zapisujemy sobie do KLAW_
+		LDY #232	      ; pointer BEG bufora klaw. do Y
+		LDA (EKRAN_),Y
+		STA GETKBUF_0_   ; BEG do PUTKBUF_0_ na pozniej
+		LDY #233	      ; pointer END bufora klaw. do Y
+		LDA (EKRAN_),Y
+		CMP GETKBUF_0_   ; czy BEG=END?
+		BNE ?COSTAM
+		LDA #$FF	      ; bufor pusty. znak #$FF zwracamy
+		RTS	      ; (czyli brak znaku). i wracamy.
+?COSTAM	LDY GETKBUF_0_   ; BEG do Y
+		LDA (EKRAN_),Y   ; znak do akumulatora
+		PHA	      ; na stos na chwile
+		INY	      ; "INC" Y (w kolko)
+		BNE ?AE
+		LDY #234
+?AE		TYA
+		LDY #232
+		STA (EKRAN_),Y   ; i zapisujemy BEG tam gdzie jego
+			      ; miejsce
+		PLA	      ; sciagamy kod znaku z akumulatora
+		RTS	      ; i wracamy.
+;
+; GET CHaracter
+;	15.05.2006
+;
+GETCH_		JSR RANGE_
+		JSR GETPLT_
+		JSR INATAC_
+		JSR INCCRS_
+		JMP KBOPN_
+;
+; GET PLoTted
+;	15.05.2006
+;
+GETPLT_	JSR CONVRT_
+		LDA (EKRAN_),Y
+		STA CHAR_
+		CMP #$00
+		RTS
+;
+; INternal	to ATAscii	Conversion
+;	15.05.2006
+;
+INATAC_	LDA CHAR_
+		ROL A
+		ROL A
+		ROL A
+		ROL A
+		AND #$03
+		TAX
+		LDA CHAR_
+		AND #$9F
+		ORA INACC_,X
+		STA ATACHR_
+		RTS
+;
+; INternal	to Atascii	Conversion Constans
+;
+INACC_		.BY $20,$40,$00,$60
+;
+; CONVeRT position to	address
+;	15.05.2006 (sproceduryzowano)
+;	10.08.2005 (jako czesc PUTCH_)
+;
+CONVRT_	LDA TTY_+1
+		STA EKRAN_+1
+		LDA TTY_
+		CLC
+		ADC COLCRS_
+		STA EKRAN_	; do adresu poczatku pamieci
+			; ekranu dodajemy pozycje X kursora
+		BCC ?HOP1
+		INC EKRAN_+1
+?HOP1		LDA ROWCRS_
+		ASL A
+		ASL A
+		ASL A
+		PHA	; na stos ROWCRS_*8
+		LDY #$00
+		STY TMPMEMXY_+1
+		ASL A
+		STA TMPMEMXY_
+		ROL TMPMEMXY_+1
+		ASL TMPMEMXY_
+		ROL TMPMEMXY_+1 ; a do TMPMEMXY_ -> ROWCRS_*32
+		CLC
+		PLA
+		ADC TMPMEMXY_   ; dodajemy *8 do *32 = *40
+		BCC ?HOP2
+		INC TMPMEMXY_+1
+?HOP2		CLC
+		ADC EKRAN_
+		STA EKRAN_
+		LDA EKRAN_+1
+		ADC TMPMEMXY_+1
+		STA EKRAN_+1    ; a calosc do zmiennej EKRAN_
+		RTS
+;
+; editor RANGE
+;	15.05.2006
+;
+RANGE_
+		LDA MAXCOL_      ; tu sprawdzamy, czy aktualna
+		CMP RMARGN_      ; wartosci prawego marginesu w
+		BCS ?ROW	      ; ogole miesci sie na ekranie
+		STA RMARGN_
+?ROW		LDA MAXROW_      ; tutaj, czy aktualna pozycja
+		CMP ROWCRS_      ; Y kursora miesci sie na ekranie
+		BCC ?ERR
+		LDA COLCRS_      ; czy pozycja X miesci sie w
+		CMP RMARGN_      ; zakresie pomiedy prawym
+		BCC ?OKEJ	      ; marginesem
+		BEQ ?OKEJ
+		BNE ?ERR
+?OKEJ		CMP LMARGN_      ; a marginesem lewym
+		BCC ?ERR
+?SUC		LDA #$01
+		STA DSTAT_
+		RTS
+?ERR		JSR CRSHOM_
+		LDA #$8D
+		STA DSTAT_
+		PLA
+		PLA	  ; sciagamy ze stosu adres powrotu do
+			  ; bezposrednio wywolujacej procedury,
+			  ; bo wracamy do KBOPN
+		JMP KBOPN_
+;
+; CuRSor HOMe
+;	15.05.2006
+;
+CRSHOM_	LDA #$00
+		STA ROWCRS_
+; Set Cursor at Left EDge
+;	16.05.2006
+SCLED_		LDA LMARGN_
+		STA COLCRS_
+		RTS
+;
+; ReTurn With SCRoll
+;	16.05.2006
+RTWSCR_	JSR SCLED_
+		LDA ROWCRS_
+		CMP MAXROW_
+		BEQ ?SKROL
+		INC ROWCRS_
+		RTS
+?SKROL		JSR SCRSCR_
+		RTS
+;
+; KeyBoard	Get BYTe
+;	17.05.2006
+; Keyboard	GET CHaracter
+;	19.05.2006
+;
+KGETCH_
+KBGBYT_	JSR GETKBUF_     ; wyciagamy kod klawisza z bufora
+		CMP #$FF
+		BEQ ?HOLD
+?KEY		TAY
+;		CPY #$C0	      ; czy nie gorna cwiartka?
+;		BCS ?IGNORE      ; jak tak, to ignorujemy
+		LDA KEYDEF_,Y    ; ! tu potem mozna zamiast
+			      ;   takiego bezposredniego refa
+			      ;   dodac odwolanie przez wektor
+			      ;   potem, ale to zezre strone 0
+?SAC		STA ATACHR_      ; storujemy charakter juz ATASCII
+		RTS	      ; kod klawisza w akumulatore, wiec
+			      ; spadamy.
+?HOLD		LDX CURPRO_      ; wpisujemy aktualnemu procesowi
+		LDA ACTTTY_      ; kod konsoli, w ktorej ten siedzi
+		STA PR.IOQUE_,X  ; do flagi na stronie bazowej
+		LDA PR.STATE_,X
+		CMP #$06	      ; jezeli proces jest do terminacji,
+			      ; to zadne klawisze go nie uratuja.
+		BEQ ?KILL
+		CMP #$08	      ; stopped procesu tez nie ruszac
+		BEQ ?KILL
+		AND #$F0	      ; kasujemy bity 0-3
+		ORA #$07	      ; STATE:="waiting to be queued"
+			      ; ale nie zmazujemy informacji o
+			      ; ewentualnym sygnale.
+		STA PR.STATE_,X
+?KILL		BRK	      ;
+		BRK	      ;
+		JMP KBGBYT_      ; kiedy juz okaze sie, ze znak sie
+			      ; pojawil, to mozna go sprobowac
+			      ; odczytac.
+;
+; KEYboard	DEFinitions table
+;
+BL	=	$FD	; bell
+BS	=	$7E	; backspace
+CD	=	$1D	; cursor down
+CK	=	$84	; CTRL key lock
+CL	=	$1E	; cursor left
+CP	=	$82	; caps
+CR	=	$1F	; cursor right
+CS	=	$7D	; clear screen
+CT	=	$9E	; clear TAB
+CU	=	$1C	; cursor up
+DC	=	$FE	; delete char
+DL	=	$9C	; delete line
+EF	=	$85	; EOF
+ES	=	$1B	; escape
+F1	=	$8A	; F1
+F2	=	$8B	; F2
+F3	=	$8C	; F3
+F4	=	$8D	; F4
+IC	=	$FF	; insert char
+IL	=	$9D	; insert line
+IN	=	$81	; inverse (atari)
+KC	=	$89	; key click
+NU	=	$80	; NOT USED
+RT	=	$9B	; return
+ST	=	$9F	; set TAB
+TB	=	$7F	; tabulate
+;
+KEYDEF_	.BY 'l' 'j' ';' F1
+		.BY F2  'k' '+' '*'
+		.BY 'o' NU  'p' 'u'
+		.BY RT  'i' '-' '='
+		.BY 'v' NU  'c' F3
+		.BY F4  'b' 'x' 'z'
+		.BY '4' NU  '3' '6'
+		.BY ES  '5' '2' '1'
+		.BY ',' ' ' '.' 'n'
+		.BY NU  'm' '/' IN
+		.BY 'r' NU  'e' 'y'
+		.BY TB  't' 'w' 'q'
+		.BY '9' NU  '0' '7'
+		.BY BS  '8' '<' '>'
+		.BY 'f' 'h' 'd' NU
+		.BY CP  'g' 's' 'a'
+; with	SHIFT
+		.BY 'L' 'J' ':' F1
+		.BY F2  'K' '\' '^'
+		.BY 'O' NU  'P' 'U'
+		.BY RT  'I' '_' '|'
+		.BY 'V' NU  'C' F3
+		.BY F4  'B' 'X' 'Z'
+		.BY '$' NU  '#' '&'
+		.BY ES  '%' '"' '!'
+		.BY '[' ' ' ']' 'N'
+		.BY NU  'M' '?' IN
+		.BY 'R' NU  'E' 'Y'
+		.BY ST  'T' 'W' 'Q'
+		.BY '(' NU  ')' $27
+		.BY DL  '@' CS  IL
+		.BY 'F' 'H' 'D' NU
+		.BY CP+1 'G' 'S' 'A'
+; with	CONTROL
+		.BY $0C $0A $7B NU
+		.BY NU  $0B CL  CR
+		.BY $0F NU	 $10 $15
+		.BY RT  $09 CU  CD
+		.BY $16 NU	 $03 KC
+		.BY NU  $02 $18 $1A
+		.BY NU  NU	 EF  NU
+		.BY ES  NU	 BL  NU
+		.BY $00 ' ' $60 $0E
+		.BY NU  $0D NU  IN
+		.BY $12 NU	 $05 $19
+		.BY CT  $14 $17 $11
+		.BY NU  NU	 NU  NU
+		.BY DC  NU	 CS  IC
+		.BY $06 $08 $04 NU
+		.BY CK  $07 $13 $01
+;
+; Functon Key DEFinition table
+;	18.05.2006
+;
+CB	=	$8F	; cursor bottom
+CH	=	$8E	; cursor home
+LM	=	$90	; cursor to left margin
+RM	=	$91	; cursor to right margin
+;
+FKDEF_		.BY CU CD CL CR
+		.BY CH CB LM RM
+;
+; CuRSor BackSPace
+;	12.06.2006
+;
+CRSBSP_	LDA COLCRS_
+		CMP LMARGN_
+		BNE ?WLEWO
+		LDA ROWCRS_
+		BEQ ?EXIT
+		DEC ROWCRS_
+		LDA RMARGN_
+		STA COLCRS_
+		JMP ?RYSUJ
+?WLEWO		DEC COLCRS_
+?RYSUJ		LDA #32
+		STA ATACHR_
+		JSR PUTCH_
+		LDA #$7E
+		STA ATACHR_
+?EXIT		RTS
+;

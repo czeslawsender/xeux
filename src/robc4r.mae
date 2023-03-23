@@ -1,0 +1,418 @@
+		.OU D1:\XEUX\ROB8\ROBC.OBJ
+		.OR $8000
+;
+; INCLUDY
+		.IN ROBI4.MAE
+;
+; TABLICA SKOKOW DO PROCEDUR W ROBB
+;
+_MALLOC_	 JMP MALLOC_     ; $8000
+_PRLOAD_	 JMP PRLOAD_     ; $8003
+;
+; 29.10.2005
+; 12.12.2005 - modyfikacje na przydzial liniowy w calosci, nie
+;		    tylko w banku sluzbowym (likwidacja sluzbowego)
+; 16.01.2006 - jezeli	liczba stron >=64, to zjebka od razu
+; Memory ALLOCator
+;
+SB.PAGE63_	= $7F00	; ostatnia strona kazdego banku pamieci
+			; zawiera informacje o jego zajetosci
+			; $FF - alokacja X stron pamieci w
+			;       przydziale liniowym dla procesu A
+MALLOC_
+		CPX #64
+		BCC ?SZUKAJ
+		LDX #$FB	; kod bledu $FB - 'process too big'
+		SEC
+		RTS
+?SZUKAJ	STA MALL0_	; numer procesu do zmiennej tymczasowej
+		LDA PORTB	; bank sprzed wywolania MALLOC_a
+		PHA	; wrzucamy na stos
+		LDY #$00
+			; przeszukujemy kolejne banki
+?DUZYLUP	TYA	; na stos odkladamy tez
+		PHA	; numer aktualnie obrabaniego banku
+		LDA BANKTBL_,Y
+		STA PORTB	; wlaczamy odnaleziony bank
+		LDY #$FE	; ustawiamy znacznik uzywany przy
+			; przeszukiwaniu tablicy zajetosci bankow
+			; na przedostatnia strone
+		TXA
+?HOP		PHA	; ilosc stron jaka mamy zarezerwowac
+			; na stos
+?SIUP		LDA SB.PAGE63_,Y
+		BEQ ?WOLNA	; i sprawdzamy, czy dana strona wolna
+		DEY
+		CPY #$BF	; moze juz koniec pamieci?
+		BNE ?CHOP
+?NOROOM	PLA
+		TAX
+		PLA	; ze stosu numer banku ktory meczylismy
+		CMP BANKNUM_ ; czy aby nie koniec bankow?
+		BEQ ?ZZOPA
+		TAY
+		INY
+		JMP ?DUZYLUP
+?ZZOPA		PLA
+		STA PORTB	; przywracamy bank
+		LDX #$FF	; kod bledu $FF - 'no room - at all'
+		SEC	; flaga C w celu latwej detekcji bledu
+		RTS
+?CHOP		PLA
+		TAX
+		JMP ?HOP	; resetujemy X
+?WOLNA		DEX
+		BEQ ?CALOSC
+		DEY
+		CPY #$BF
+		BNE ?SIUP
+		BEQ ?NOROOM
+?CALOSC	PLA	; ilosc stron ze stosu przyda sie do
+			; licznika (X) przy wypelnianiu tablicy
+			; zajetosci
+		TAX
+		TYA
+		AND #$3F	; %00111111
+		PHA	; poczatek obszaru na stos
+;		INC MALL0_	; na potrzeby rezerwacji przynajmniej
+;			; tymczasowo wpisujemy nr.procesu +1
+; 11.06.2006 - usuwam	powyzsze, bo teraz numer 00 ma idle
+;		    process i juz nie ma potrzeby wyrozniania o +1.
+		LDA MALL0_	; dla ktorego procesu rezerwujemy RAM?
+?TUP		STA SB.PAGE63_,Y
+		INY
+		DEX
+		BNE ?TUP	; oznaczamy cztery strony pamieci jako
+			; zajete
+		PLA	; poczatek obszaru
+		CLC
+		ADC #$40	; dodac $4000 (bo to bank) zeby uzyskac
+			; MSB adresu tego kawalka pamieci.
+		TAY	; zwracamy strone w Y
+		PLA	; numer banku
+		TAX
+		PLA	; PORTB
+		STA PORTB	; przywracamy
+		TXA	; numer banku do A
+		LDX #$00	; kod sukcesu - "jest radosc, jest radosc"
+		CLC	; kasujemy Carry - sukces
+		RTS
+MALL0_		.BY $00	; zmienna tymczasowa.
+;
+; 12.12.2005
+; 20.12.2005 - kontynuacja loadera (ladowanie kodu, fixupy).
+; 27.03.2006 - wygladzanie loadera (TTY, PID, etc).
+;
+; PRocess LOADer
+;	na wejsciu w AX adres bufora, do ktorego wczytano
+;	proces (razem z naglowkiem XX), w Y numer TTY_
+PRLOAD_	STA LOADER0_
+		STX LOADER0_+1 ; adres z AX do zmiennej tymczasowej
+		TYA
+		PHA	    ; na stos numer TTY_ dla procesu
+; $233B 20.12.2005 ROB.COM z ROBA8C.MAE godzina 03:53
+		LDY #$00
+		LDA (LOADER0_),Y
+		CMP #$58	    ; 'X'
+		BNE ?NOTBIN
+		INY
+		LDA (LOADER0_),Y
+		CMP #$58	    ; 'XX'
+		BNE ?NOTBIN
+		INY
+		INY
+		LDA (LOADER0_),Y
+		STA LOADER1_
+		INY
+		LDA (LOADER0_),Y
+		STA LOADER1_+1 ; dlugosc kodu do LOADER1_
+		TAX
+; ustalanie wolnego slotu na proces
+		LDY #$00
+?SZARIK	LDA PR.STATE_,Y
+		BEQ ?PAMIECI     ; szarik szukaj, szukaj tasmociagu
+		CPY MAXPROC_
+		BEQ ?BRAKSLOTU
+		INY
+		JMP ?SZARIK
+?BRAKSLOTU	LDX #$FE	; kod bledu $FE - 'max proc no. reached'
+		PLA	; zabrac tego TTY_
+		SEC
+		RTS
+?NOTBIN	LDX #$FD	    ; kod bledu $FD - 'not a binary file'
+		PLA	    ; TTY_
+		SEC
+?FINI		RTS
+?KAKA		PLA	    ; ze stosu numer procesu zabrac
+		TAY
+		LDA #$00	     ; STATE:='nonexistent'
+		STA PR.STATE_,Y ; zwalniamy slota
+		PLA	    ; i TTY_
+		RTS
+; rezerwacja pamieci dla procesu
+?PAMIECI	LDA #$01	    ; STATE:='being created'
+		STA PR.STATE_,Y ; rezerwacja tego slocisza
+		INX	    ; ile stron zajmuje kod
+		INX
+		INX
+		INX	    ; dodac jeszcze 3 strony na zeropage
+			    ; stos i IOCB przyszle
+		TYA	    ; numerek jaki ma on ten proces
+		PHA
+		JSR MALLOC_    ; i rezerwujemy
+		BCS ?KAKA	    ; jezeli nie ma pameci, to trudno,
+			    ; wracamy - kod bledu odziedziczony
+			    ; z wyjscia MALLOC_, carry tez jest
+			    ; z MALLOC_a ustawione.
+; wpisy do	tablicy PR.*
+		STA LOADER2_   ; numer banku tutaj na chwile
+		STY LOADER2_+1 ; numer strony natomiast tu
+		PLA	    ; podbieramy numer procesu
+		TAY
+		LDA #$02	    ; STATE:='new'
+		STA PR.STATE_,Y
+		LDA LOADER2_
+		STA PR.BANK_,Y
+		LDA LOADER2_+1
+		STA PR.PAGE_,Y
+		STA LOADER3_+1
+		LDA LOADER1_+1
+		TAX
+		INX	    ; ile stron zajmuje kod
+		INX	    ; +1 (IOCB)
+		TXA
+		CLC
+		ADC LOADER3_+1 ; + PR.PAGE_
+		STA PR.ZERO_,Y ; = PR.ZERO_ (adres strony zerowej)
+; teraz przepisujemy kod z bufora
+		LDA PORTB
+		PHA	    ; aktualny bank na stos
+		TYA
+		PHA	    ; na stos tez obrabiany proces
+		LDY LOADER2_
+		LDA BANKTBL_,Y
+		STA PORTB	    ; przelaczamy sie do banku w ktorym
+			    ; ma wyladowac proces
+		LDA #$00
+		STA LOADER3_   ; zmienna tymczasowa - zerujemy
+		STA LOADER2_   ; teraz w LOADER2_ mamy adres poczatku
+			    ; pamieci dla kodu procesu, a w
+			    ; LOADER0_ bufor do ktorego
+			    ; wczytalismy proces (z naglowkiem)
+		LDA #$05	    ; naglowek to 5 bajtow (XX, len, ext)
+		CLC
+		ADC LOADER0_
+		STA LOADER0_
+		BCC ?BEZ
+		INC LOADER0_+1
+?BEZ		LDA LOADER1_+1
+		CMP LOADER3_   ; czy MSB dlugosci kodu = LOADER3_?
+		BEQ ?LASTONE
+		LDY #$00
+?LUPP		LDA (LOADER0_),Y
+		STA (LOADER2_),Y ; przepisujemy po bajcie z bufora
+			      ; do pamieci procesu kod
+		INY
+		BNE ?LUPP
+		INC LOADER3_   ; zwiekszamy cunter LOADER3_
+		INC LOADER2_+1
+		INC LOADER0_+1 ; i MSB bufora oraz miejsca na kod
+		JMP ?BEZ
+?NOTFIX	PLA
+		PLA
+		STA PORTB
+		LDX #$FC	    ; kod bledu $FC - 'fixup tbl missing'
+		PLA	    ; TTY_
+		SEC
+		RTS
+?LASTONE	LDY #$00
+?LUPL		LDA (LOADER0_),Y
+		STA (LOADER2_),Y
+		CPY LOADER1_  ; czy to ostatni bajt kodu z ostatniej
+			   ; strony?
+		BEQ ?POSZLO
+		INY
+		BNE ?LUPL
+; teraz pora na fiksapy
+?POSZLO	LDA LOADER1_ ; dlugosc kodu
+		SEC	  ; + 1
+		ADC LOADER0_ ; + adres bufora (+ $05 bajtow headera)
+		STA LOADER0_ ; = nowy adres bufora
+		BCC ?NAG
+		INC LOADER0_+1
+; sprawdzamy naglowek
+?NAG		LDY #$00
+		LDA (LOADER0_),Y
+		CMP #$46	    ; 'F'
+		BNE ?NOTFIX
+		INY
+		LDA (LOADER0_),Y
+		CMP #$46	    ; 'FF'
+		BNE ?NOTFIX
+		INY
+; dlugosc tabeli fiksapow
+		LDA (LOADER0_),Y
+		STA LOADER1_
+		INY
+		LDA (LOADER0_),Y
+		STA LOADER1_+1
+		INY	        ; z tego nie skorzystamy,
+			        ; przynajmniej na razie.
+; kod relokatora - etykieta globalna, zeby nie musiec zmieniac
+;		        wszystkich lokanych z kodu co sobie z gory
+;		        dla ulatwienia skopiowalem. ;)
+RELOKATUR_	LDA #$00
+		STA LOADER3_
+		PLA	    ; ze stosu numer procesu
+		PHA
+		TAY
+		LDA PR.PAGE_,Y
+		STA LOADER3_+1 ; strona procesu do LOADER3_+1
+		LDA #$04	    ; naglowek to 4 bajty (FF, len)
+		CLC
+		ADC LOADER0_
+		STA LOADER0_
+		BCC ?BEZ
+		INC LOADER0_+1
+?BEZ		LDA LOADER1_+1
+		CMP LOADER3_   ; czy MSB dlugosci kodu = LOADER3_?
+		BEQ ?LASTONE
+		LDY #$00
+?LUPP		JSR RELOKUI_
+		BNE ?LUPP
+		INC LOADER3_   ; zwiekszamy cunter LOADER3_
+		INC LOADER0_+1 ; i MSB bufora oraz miejsca na kod
+		JMP ?BEZ
+?LASTONE	LDY #$00
+?LUPL		JSR RELOKUI_
+		CPY LOADER1_  ; czy to ostatni bajt kodu z ostatniej
+			   ; strony?
+		BEQ ?POSZLO
+		INY
+		BNE ?LUPL
+?POSZLO	PLA	   ; ze stosu numer procesu
+		TAX
+		LDA #$02
+		STA PR.PRIOR_,X
+		INC LASTPID_
+		LDA LASTPID_
+		STA PR.PID_,X      ; ustawiamy rozne takie dane
+			        ; dla procesu
+		LDA #$00
+		STA LOADER2_
+		LDA PR.ZERO_,X
+		STA LOADER2_+1     ; przestrzen na strone zerowa
+		LDY #$00
+?SIU		LDA $00,Y
+		STA (LOADER2_),Y
+		INY
+		BNE ?SIU
+; teraz stos
+;
+; 08.06.2006 - przekazywanie parametrow przez stos procesu
+;  PRLPRN_	<- PRLoad PaRameters Number:
+;			 $00 - brak parametrow
+;			 $nn - nn bajtow do przekazania
+;  PRLPAX_	<- adres bufora z parametrami
+;
+		INC LOADER2_+1     ; przelaczamy sie na przestrzen
+			        ; stosu
+		DEY
+		LDA PRLPRN_        ; czy sa jakies parametry?
+		BNE ?SA
+		DEY
+		STA (LOADER2_),Y   ; $00 na stos procesu
+		DEY
+		JMP ?BLURP
+?SA		STX LOADER3_       ; slot procesu tu przykismy
+		TAX	        ; liczbe bajtow parametrow do X
+		DEX
+		DEY
+?HRUM		STY LOADER3_+1     ; wskaznik stosu tutaj
+		TXA
+		TAY
+		LDA (PRLPAX_),Y
+		LDY LOADER3_+1     ; wskaznik stosu stad
+		STA (LOADER2_),Y   ; i bajt parametru na stos
+		DEY
+		DEX
+		BPL ?HRUM
+		LDA PRLPRN_
+		STA (LOADER2_),Y   ; ilosc bajtow parametrow na stos
+		DEY
+		LDX LOADER3_       ; slot procesu zbieramy
+?BLURP		LDA PR.PAGE_,X
+		STA (LOADER2_),Y   ; MSB poczatku kodu procesu
+		DEY
+		LDA #$00
+		STA (LOADER2_),Y   ; LSB poczatku kodu procesu
+		DEY
+		LDA #$20
+		STA (LOADER2_),Y   ; flagi procesora
+		DEY
+		LDA #$00
+		STA (LOADER2_),Y   ; (A)
+		DEY
+		STA (LOADER2_),Y   ; (X)
+		DEY
+		STA (LOADER2_),Y   ; (Y)
+		TYA	        ; w Y mamy aktualny stack pointer
+			        ; dla stosu procesu
+		STA PR.STACK_,X    ; i zapisujemy go gdzie trzeba
+; no i	proces gotowy do lotu...
+PRREADY_
+		PLA
+		STA PORTB
+		PLA	    ; ze stosu numer TTY_ dla procesu
+		STA LOADER0_   ; tu na chwilke
+		STA PR.TTY_,X  ; i do tablicy procesu z nim
+		TXA	    ; w akumulatorze 'slot' procesu
+		LDX LOADER0_
+		STA TTYOWNT_,X ; slot procesu jako owner danej
+			    ; konsoli niech sie zjawi
+		TAX
+		ASL	    ; *2 ten slot
+		TAY
+		LDA #$00	      ; resetujemy MSB wektorow sygnalow
+		STA SIG.HUP_+1,Y
+		STA SIG.TERM_+1,Y
+		STA SIG.IO_+1,Y
+		STA SIG.USR1_+1,Y
+		STA SIG.USR2_+1,Y
+		STA PR.SIGNAL_,X ; i kawalki strony bazowej
+		STA PR.IOQUE_,X
+		LDA CURPRO_
+		STA PR.PARENT_,X ; potwierdzenie ojcostwa
+		LDA #$03
+		STA PR.STATE_,X  ; STATE:='ready'
+		TXA
+		LDX #$00
+		CLC
+		RTS
+; kawalek relokatora,	co to by sie musial powtarzac w kodzie
+; a jest wielki...
+RELOKUI_	LDA (LOADER0_),Y
+		STA LOADER2_
+		INY
+		LDA (LOADER0_),Y
+		STA LOADER2_+1  ; w LOADER2_ teraz offset od
+			     ; PR.PAGE_ gdzie nalezy dodac do
+			     ; wartosci w pamieci PR.PAGE_
+		LDA LOADER3_+1  ; PR.PAGE_ do A
+		CLC
+		ADC LOADER2_+1
+		STA LOADER2_+1  ; dodajemy do MSB miejsca w pamieci
+		TYA
+		TAX	     ; wartosc Y przekisimy w X
+		LDY #$00
+		LDA (LOADER2_),Y ; tylko LDA (zp),Y dobierzemy sie
+			      ; do tego miejsca w pamieci...
+		ADC LOADER3_+1   ; zakladamy, ze Carry jest clear,
+			      ; bo z poprzeniego ADC nie ma
+			      ; prawa powstac przepelnienie.
+		STA (LOADER2_),Y
+		TXA
+		TAY	     ; przywracamy Y
+		RTS
+;
+ 

@@ -1,0 +1,322 @@
+		.OU D1:\XEUX\ROB8\ROBZ.OBJ
+		.OR $9700
+;
+; deklaracje zmiennych systemowych (miejsce tymczasowe)
+; /zmienne	nie potrzebujace znajdowac sie na stronie 0/
+;
+MAXCOL_	.BY 39	; maksymalna liczba kolumn
+MAXROW_	.BY 23	; maksymalna liczba linii
+COLCRS_	.BY 0	; pozycja kursora X
+ROWCRS_	.BY 0	; pozycja kursora Y
+LMARGN_	.BY 2	; lewy margines
+RMARGN_	.BY $27	; prawy margines
+MEMTOP_	.WO $00	; koniec dostepnej pamieci, powyzej
+			; pamiec ekranu
+APPMHI_	.WO $00	; tutaj powinien byc pointer wskazujacy
+			; ile pamieci jest zezarte zeby wiediec
+			; do jakiego poziomu moc obnizac MEMTOP_
+ACTTTY_	.BY $00	; numer aktywnej konsoli (dla procesu)
+VISTTY_	.BY $00	; numer widocznej konsoli
+CURPRO_	.BY $00	; numer aktualnie dzialajacego procesu
+LASTPID_	.BY $00	; ostatnio przyznany PID
+RUNLEVEL_	.BY $FF	; runlevel. default - single mode (FF).
+;
+; stale systemowe - miejsce tymczasowe
+;
+MAXPROC_	.BY 31	; maksymalna ilosc procesow w systemie -1
+;
+; zmienne robocze nie	na stronie zerowej
+;
+TEMP1_		.BY 0	; zmienna testowa nr 1
+TEMP2_		.BY 0	; zmienna testowa nr 2
+;
+PRREADL_	.BY $FF	; lock dla bufora PRREAD_
+			;  wartosc domyslna $FF
+			;  jezeli zalockowane, to numer procesu
+MAXTTYS_	.BY $03	; liczba ttys w systemie
+;
+;
+; 26.05.2006 - dane procesow wyniesione z ROBA15.MAE
+;
+		.OR $9800
+;
+;
+; 26.10.2005
+;	BANK TaBLe
+;	dodano BANKUSE_
+;
+BANKTBL_	.BY $FF	; %11111111 - CPU/ANTIC base RAM
+		.BY $E3	; %11100011 - CPU ext RAM bank 0
+; BANK	$EF	dla Sparta	DOS X na czas testow, zeby nam tam
+; procesy nie mazaly...
+		.BY $E7	; %11100111 - CPU ext RAM bank 1
+		.BY $EB	; %11101011 - CPU ext RAM bank 2
+;		.BY $EF	; %11101111 - CPU ext RAM bank 3
+BANKNUM_	.BY $03	; ilosc bankow (od 0).
+;
+;
+; 21.10.2005
+; 12.12.2005 - PR.PAGE_ added. some comments.
+;
+;	PROCess information TABle
+;
+		.OR $9900
+;
+PR.PID_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's PID
+;	value between 0 and 255, rotates when 255 reached
+PR.STATE_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's STATE
+;	00 - nonexistent
+;	01 - being created - keep out
+;	02 - new
+;	03 - ready
+;	04 - running
+;	05 - waiting for i/o
+;	06 - terminating
+;	07 - to be queued for i/o
+;	08 - stopped (25.05.2006)
+;	bit	7 - signal	waiting
+;	bit	6 - i/o waiting (04.06.2006)
+PR.PRIOR_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's PRIORity
+;	00 - swap context every VBL
+;	01 - swap context once per 2 VBLs
+;	nn - nn+1 VBLs	between context swap
+PR.CREDI_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's CREDIt
+;	decremented each time scheduler runs, if $00 then swap
+PR.STACK_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's STACK pointer
+PR.BANK_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's memory BANK
+PR.TTY_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's TTY number assigned
+PR.PAGE_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's starting memory PAGE in bank nr PR.BANK_
+PR.ZERO_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's ZERO page (+1 -> Stack, -1 -> IOCB).
+PR.PARENT_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's PARENT process
+; 19.05.2006 - moze sie przydac przy terminacji
+;		    procesu i 'oddawaniu' konsoli parentowi
+PR.SIGNAL_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's SIGNAL waiting
+; 26.05.2006 - do obslugi sygnalow to sie nada
+PR.IOQUE_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+; PRocess's I/O QUEue reason
+; 29.05.2006 - tutaj wpisujemy, ktory wlasciwie dewajs
+;		    spowodowal nam skolejkowanie procesu.
+;
+		.OR $9A80
+; IO QUEues
+;	19.05.2006
+;
+IOQUE_		.BY $FF $FF $FF $FF $FF $FF $FF $FF
+		.BY $FF $FF $FF $FF $FF $FF $FF $FF
+;
+; TTY OWNership Table
+;	04.06.2006 - w	renault clio w drodze z pucka :)
+;	wypelnione z defaulta $FF - znaczy, konsola niczyja
+;
+TTYOWNT_	.BY $FF $FF $FF $FF
+;
+; przestrzen tymczasowa, na bufor ladowania procesu na
+; przyklad	(2x256 bytes)
+;
+		.OR $9D00
+TMPSPACE_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+TMPSPACF_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+;
+; 05.06.2006
+; zalazek przestrzeni	na wektory obslugi sygnalow
+; (32x2 bytes - 64 bytes na sygnal). na piec sygnalow - 320B
+; + 32	bytes na tablice interpretacji sygnalow, 2 miejsca wolne
+; na dwa dodatkowe sygnaly i 32 bajty zostaja luzem (razem
+; 2 strony)
+;
+		.OR $9F00
+;
+SIGVEC1_
+; 1 - SIGHUP
+SIG.HUP_	.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+; 15 -	SIGTERM
+SIG.TERM_	.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+; 23 -	SIGIO
+SIG.IO_	.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+; 30 -	SIGUSR1
+SIG.USR1_	.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+;
+SIGVEC2_
+; 31 -	SIGUSR2
+SIG.USR2_	.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+; x - RESRVED 1
+SIG.RESV1_	.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+; y - RESRVED 2
+SIG.RESV2_	.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+		.WO $0000 $0000 $0000 $0000 $0000 $0000 $0000 $0000
+; SIGTBL_
+; tablica tlumaczaca numer sygnalu na offset do poczatku
+; tablicy SIGVEC_ (do	pomnozenia przez 64 zeby uzyskac
+; wlasciwy	offset). w	tablicy kolejne entrys dla kolejnych
+; sygnalow	(sygnal 1 - przesuniecie o 0, 2 -> o 1, etc).
+; $FF - nonexistent.
+; $FE - obsluga specalna (SIGKILL, SIGSTOP, SIGCONT, etc).
+; jezeli po przemnozeniu tego offsetu flaga carry jest set, to
+; znaczy, ze nalezy skorzystac z 2 czesci tabeli, jezeli nie,
+; to z	czesci pierwszej.
+;
+SIGTBL_	.BY $00 $FF $FF $FF $FF $FF $FF $FF ; 1-8
+		.BY $FE $FF $FF $FF $FF $FF $01 $FF ; 9-16
+		.BY $FE $FF $FE $FF $FF $FF $02 $FF ; 17-24
+		.BY $FF $FF $FF $FF $FF $03 $04 $FF ; 25-32
+;
+		.OR $9B00
+;
+;
+; TTY TaBLe
+;	17.08.2005
+;	zawiera adresy	poczatkow pamieci dla konsol
+TTYTBL_	.WO $0000	           ; konsola 0
+		.WO $0000	           ; 1
+		.WO $0000	           ; 2
+		.WO $0000	           ; 3
+DLIST_		.WO $0000	           ; i adres display listy
+;
+; TTy SETtings Table
+;	18.08.2005
+;	zawiera parametry typu pozycja kursora i marginesy
+;	dla	kazdej z konsol
+MXCOLT_	.WO $0000 $0000  ; MAXCOL_
+MXROWT_	.WO $0000 $0000  ; MAXROW_
+CLCRST_	.WO $0000 $0000  ; COLCRS_
+RWCRST_	.WO $0000 $0000  ; ROWCRS_
+LMRGNT_	.WO $0000 $0000  ; LMARGN_
+RMRGNT_	.WO $0000 $0000  ; RMARGN_
+;
+		.OR $9C00
+; PRrocess' NAME
+;	10.06.2006
+;	tu storowane 8	bajtowe nazwy procesu. przestrzen
+;	256	bajtow dla	32 procesow. jezeli nazwa krotsza
+;	niz	8 znakow, to terminowana $00.
+;
+PR.NAME_
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+		.BY $00 $00 $00 $00 $00 $00 $00 $00
+;
+

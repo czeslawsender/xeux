@@ -1,0 +1,772 @@
+		.OU D1:\XEUX\ROB10\ROB.COM
+		.OR $2000
+;
+; INCLUDES
+;
+		.IN ROBI4.MAE   ; zmienne systemowe, wektory skokow
+		.IN ROBP3.MAE   ; adresy procedur z innych modulow
+;
+; 10.08.2005
+;	makra smieciowe i tymczasowe
+;
+; PUT XY
+;	10.08.2005
+;	tymczasowe makro umieszczajace dany znak na pozycji
+;	X,Y. wywolanie: PUTXY_ X Y kod-znaku
+;
+!!!PUTXY_	.MD
+		LDA #:1
+		STA COLCRS_
+		LDA #:2
+		STA ROWCRS_
+		LDA #:3
+		JSR OUTCH_
+		.ME
+;
+; MEMory 2	SCReen
+;	22.09.2005
+;	tymczasowe makro wypisujace na wirtualna konsole
+;	zawartosc komorki pamieci
+;
+!!!MEM2SCR_ .MD
+		LDA :1+1
+		JSR NUM2SCR_
+		LDA :1
+		JSR NUM2SCR_
+		PHA
+		LDA #32
+		JSR OUTCH_
+		PLA
+		.ME
+;
+; PRINT_M
+;	23.09.2005
+;
+!!!PRINT_M_ .MD
+		JSR PRINT_P_
+		.BY :1 :2 :3 :4 :5 :6 :7 :8 :9 0
+		.ME
+;
+INITIALIZE	JSR ENVINI_
+		JSR TTYINI_
+		JSR PRTBINI_
+		JSR IDLEINI_
+		JSR SKEINI_
+		PRINT_M_ $9B 'XEUX Operating System' $9B
+		PRINT_M_ ' build 151, 23.06.2006 01:39 by krap' $9B
+		PRINT_M_ $9B 'system initialized' $9B
+		PRINT_M_ 'operating in single mode' $9B $9B
+		PRINT_M_ 'starting:' $9B
+		LDA #$00
+		STA CURPRO_
+		STA LASTPID_
+		LDA #$FF
+		STA PRREADL_ ; lock bufora wczytywania procesu
+;
+; miejsce tego kodu ponizej zajmie proces INIT, ktory bedzie
+; wczytywal konsole (moze nawet zgodnie z inittab, kto wie).
+; tu natomiast bedzie	tylko jeden sliczny fork do INIT'a.
+;
+		LDA #$06
+		STA PRLPRN_
+		LDA #<BLAH_
+		STA PRLPAX_
+		LDA #>BLAH_
+		STA PRLPAX_+1
+		PRINT_M_ ' shell on tty 0... '
+;
+		LDA #<TK.FNAME_
+		STA PRFNAME_
+		LDA #>TK.FNAME_
+		STA PRFNAME_+1
+		LDY #$00
+		JSR FORK_
+		BCC ?NEXT
+		TXA
+		PHA
+		PRINT_M_ 'error: '
+		PLA
+?NEXT
+;		JSR NUM2SCR_
+		PRINT_M_ 'OK' $9B
+		PRINT_M_ ' shell on tty 1... '
+		LDA #<TK.FNAMF_
+		STA PRFNAME_
+		LDA #>TK.FNAMF_
+		STA PRFNAME_+1
+		LDY #$01
+		JSR FORK_
+		BCC ?NXT
+		TXA
+		PHA
+		PRINT_M_ 'error: '
+		PLA
+?NXT
+;		JSR NUM2SCR_
+		PRINT_M_ 'OK' $9B
+;		PRINT_M_ 'proces 3... '
+;		LDA #<TK.FNAMG_
+;		STA PRFNAME_
+;		LDA #>TK.FNAMG_
+;		STA PRFNAME_+1
+;		LDY #$00
+;		JSR FORK_
+;		BCC ?NSTK
+;		TXA
+;		PHA
+;		PRINT_M_ 'error: '
+;		PLA
+?NSTK
+;		JSR NUM2SCR_
+		PRINT_M_ $9B
+; go multiuser!
+;		LDA #$00
+;		JSR PTTYSWT_
+		PRINT_M_ 'going multiuser...' $9B $9B
+		LDA #$00
+		STA RUNLEVEL_
+;
+		LDY #$01
+		STY CURPRO_
+		LDA PR.PAGE_,Y
+		TAX
+		DEX
+		TXA
+		PHA
+		LDA #$FF
+		PHA
+		RTS
+;
+FINI		JMP FINI
+TK.FNAME_	.BY 'D:BARSZCZ.XX' $9B
+TK.FNAMF_	.BY 'D:BARSZCZ.XX' $9B
+TK.FNAMG_	.BY 'D:BARSZCZ.XX' $9B
+BLAH_		.BY $AA $BB $CC $DD $EE $FF
+;
+; ENVironment INIt
+;	17.08.2005
+;
+ENVINI_	LDA MEMTOP
+		STA MEMTOP_
+		LDA MEMTOP+1
+		STA MEMTOP_+1
+		LDA #$00	   ; na razie bez limitow
+		STA APPMHI_
+		STA APPMHI_+1
+		STA SKE_SGT2_+1 ; flage zresetujmy, bo na narobi
+			     ; klopotow
+		RTS
+;
+; 21.10.2005
+;	BANK SWiTch
+;	wlacza bank X z tablicy BANKTBL_
+;
+BANKSWT_	LDA BANKTBL_,X
+		STA PORTB
+		RTS
+;
+SKE_TEMP_  .BY $00
+		.BY $00
+SKE_NEXT_	.BY $00	; zmienna prechowujaca nastepny slot
+SKE_SIGT_	.BY $00	; zmienna przechowujaca slot procesu
+			; wywlaszczonego w momencie rozpoczecia
+			; obslugi sygnalu.
+SKE_SGT2_	.BY $00	; a tu adres skoku do procedury obslugi
+		.BY $00	; sygnalu skisimy i jednoczesnie bedzie
+			; to flaga do SKE_MLTI_?STORE/?SWITCH
+;
+; SKEDduler on BRK
+;	19.05.2006
+;	potrzebny nam przy kooperative multitaskingu.
+;
+SKEDBRK_	TXA	; jako, ze kiedy wywolywany jest
+		PHA	; VBREAK to na stosie lezy tylko A,
+		TYA	; a nie X i Y, to musimy doprowadzic
+		PHA	; do sytuacj wspolnej zanim odpalimy
+			; wspolny kod skedulera dla BRK i VBL.
+;
+; 17.03.2006 - rewrite skedulera
+;		    San Jose, CA, Cisco SJ-16
+;
+SKEDUL_	  
+	  CLD	; kasujemy tryb DECIMAL, jakby jakis
+			; proces nam to ustawil. flagi i tak 
+			; sa skiszone na stosie, wiec na 
+			; wyjsciu ze skedulera nie trzeba 
+			; tego przywracac
+	  BIT RUNLEVEL_
+	  BPL ?JEDZIEM  ; uruchamiamy skeduler tylko jezeli 
+			 ; nie dziala juz zaden inny
+	  JMP SKE_RUN_	 ; wychodzimy ze skedulera
+?JEDZIEM LDA RUNLEVEL_
+	  ORA #$80
+	  STA RUNLEVEL_ ; ustawiamy bit, ze pracujemy...
+	  BVC ?DALI	 ; przelaczamy sobie leniwie rowniez
+			 ; tylko wtedy, jezeli nikt nie czeka
+			 ; na i/o
+	  JMP SKE_IOC_  ; i/o critical
+?DALI	  LDA #$20
+	  BIT RUNLEVEL_ ; czy obsluga sygnalu?
+	  BEQ ?OGIEN
+	  JMP SKE_SIG_	 ; do obslugi sygnalow
+?OGIEN	  LDA #$01
+	  BIT RUNLEVEL_ ; czy single mode?
+	  BEQ ?RUHY
+	  JMP SKE_RET_	 ; wychodzimy
+?RUHY	  LDA #$02
+	  BIT RUNLEVEL_ ; czy monitor mode?
+	  BEQ SKE_MLTI_
+	  JMP SKE_MON_  ; do monitor moda
+;
+SKE_MLTI_		 ; SKEDULER - multi user
+	  LDX CURPRO_
+	  BEQ ?CZYINNI	    ; czy to IDLE process?
+	  LDA PR.STATE_,X  ; sprawdzamy stan procesu
+	  AND #$0F	    ; ale porownujemy tylko bity 0-3
+	  CMP #$06
+	  BNE ?SPRAWNY
+	  JMP SKE_TER_	 ; do terminacji
+?SPRAWNY CMP #$07
+	  BNE ?CHODZI
+	  JMP SKE_QUE_	 ; do skolejkowania po i/o
+;
+?CHODZI
+	  LDA PR.CREDI_,X ; 'kredyt' czasu aktualnego
+			   ; procesu hop do akumulatora
+	  BEQ ?CZYINNI	   ; jezeli sie wyczerpal, to
+			   ; sprawdzamy, czy sa jacys inni
+			   ; kandydaci
+	  DEC PR.CREDI_,X ; ale skoro sie nie wyczerpal,
+			   ; to mu go zmniejszamy...
+	  JMP SKE_RET_
+;
+?CZYINNI
+			; SKEDULER - poszukiwanie innego
+			; chetnego procesu
+	  STX SKE_TEMP_    ; zachowujemy 'slot' na pozniej
+	  LDA PR.PRIOR_,X
+	  STA PR.CREDI_,X  ; przydzielamy nowy kredyt
+			    ; procesowi wywlaszczanemu
+			    ; (na pozniej)
+	  LDA PR.STATE_,X
+	  AND #$0F	    ; porownujemy tylko bity 0-3
+	  CMP #$05
+	  BEQ ?HRUM	    ; jezeli to proces oczekujacy
+			    ; na io, to nie zmieniajmy tego
+	  LDA PR.STATE_,X
+	  AND #$F0	    ; zerujemy bity 0-3
+	  ORA #$03	    ; zapalamy je na $03, czyli:
+	  STA PR.STATE_,X  ; zmieniamy stan na $03:'ready'
+			    ; zeby wyrownac szanse
+?HRUM	  CPX MAXPROC_  ; porownujemy aktualny 'slot' procesu
+			 ; z maksymalna liczba procesow w
+			 ; systemie
+	  BNE ?PRUK     ; jezeli to 'ostatni', to resetujemy
+	  LDX #$FF      ; go na 0.
+?PRUK	  INX	 ; w taki niebezposredni sposob :)
+;	  CPX SKE_TEMP_  ; czy nie zrobilismy juz pelnego kolka?
+;	  BNE ?JEDZ	   ; jezel przypadkiem tak, to
+;	  JMP SKE_NOPROC_ ; idz do obslugi tego zdarzenia...
+; przy	zalozeniu, ze idle process zawsze ma $03/$04 stan, to
+; nie ma takiej sytuacji, ze nic nie znajdziemy...
+?JEDZ	  LDA PR.STATE_,X  ; sprawdzamy stan procesu w
+			    ; kolejnym (cycle) slocie
+	  AND #$0F	    ; ale tylko bity 0-3
+	  CMP #$03
+	  BEQ ?QQ	    ; inkrementujemy az znajdziemy
+;	  CMP #$07	    ; stan 'waiting to be queued'
+;	  BNE ?KK
+;	  JMP SKE_QUE_
+; to powyzsze na chwile zawiesmy.
+?KK	  CMP #$06	    ; stan 'terminating'
+	  BNE ?HRUM
+	  JMP SKE_TRM_	    ; terminacja z przechowaniem
+			    ; kontekstu.
+?QQ	  CPX SKE_TEMP_
+	  BNE ?STORE	    ; jezeli to nie ten sam proces,
+			    ; to przelaczamy sie na nowy.
+?AUT	  LDA PR.STATE_,X
+	  AND #$F0	    ; zerujemy bity 0-3
+	  ORA #$04	    ; zapalamy je na $04, czyli:
+	  STA PR.STATE_,X  ; zmieniamy stan na $04:"running"
+	  JMP SKE_RET_	    ; a jezeli ten sam, to wracamy
+;
+?STORE			; SKEDULER - multi user : store
+			; na wejsciu: w X nowy proces,
+			; w SKE_TEMP_ aktualnie dzialajacy
+	  STX SKE_NEXT_   ; numer nowego procesu storujemy
+	  LDX SKE_TEMP_   ; podbieramy slot aktualnie
+			   ; dzialajacego procesu
+	  BEQ ?SWITCH	   ; czy to IDLE process?
+	  LDA #$00
+	  STA SKEDUL0_	   ; zerujemy sobie zmienna robocza
+	  LDA PR.ZERO_,X  ; ladujemy adres strony zerowej
+	  STA SKEDUL0_+1
+	  INC SKEDUL0_+1  ; zinkrementowany o 1 da adres
+			   ; przestrzeni na stos procesu
+	  TXA
+	  TAY	   ; 'slot' procesu do Y
+	  TSX
+	  TXA
+	  STA PR.STACK_,Y  ; stack pointer do tablicy
+	  PHA	    ; i na stos
+	  TYA
+	  TAX	    ; 'slot' procesu z powrotem do X
+	  PLA
+	  TAY	    ; wskaznik stosu do Y
+;
+?LUP	  PLA	    ; sciagamy ze stosu kolejne
+			    ; elementy
+	  STA (SKEDUL0_),Y  ; i zapisujemy je w przestrzeni
+			     ; zaalokowanej na stos
+	  INY
+	  BNE ?LUP	     ; tak dlugo, az cos jest na
+			     ; stosie
+;
+	  DEC SKEDUL0_+1    ; przenosimy sie na przestrzen
+			     ; zaalokowana na zeropage
+?SIUP	  LDA $00,Y         ; pobieramy element z ZP
+	  STA (SKEDUL0_),Y  ; i wrzucamy na przechowanie
+	  INY
+	  BNE ?SIUP	     ; 256 razy (cala ZP)
+;
+?SWITCH		; SKEDULER - multi-user : switch
+	  LDX SKE_NEXT_     ; 'slot' nowego procesu ze zmiennej X
+	  BNE ?REAL	     ; czy to IDLE process?
+	  JMP SKE_IDLE_
+?REAL	  STX CURPRO_	     ; i do CURPRO
+	  LDA PR.BANK_,X    ; pobieramy info o banku procesu
+	  TAY
+	  LDA BANKTBL_,Y    ; odpowiadajaca mu wartosc PORTB
+	  STA PORTB	     ; i przelaczamy bank
+	  LDA #$00
+	  STA SKEDUL0_
+;
+	  LDA PR.ZERO_,X    ; bedziemy odtwarzac zeropage
+	  STA SKEDUL0_+1    ; stad
+	  LDY #$20	     ; !!! nie cala strona zerowa, tylko
+			     ; od $20 w gore.
+;
+?AE	  LDA (SKEDUL0_),Y
+	  STA $00,Y
+	  INY
+	  BNE ?AE
+;
+	  LDA PR.TTY_,X
+	  BMI ?BRAK	     ; jezeli proces ma konsole, to
+	  JSR PTTYSWT_	     ; przepisujemy zmienne od TTY'kow
+?BRAK	  LDX CURPRO_
+;
+	  INC SKEDUL0_+1
+	  LDA PR.STACK_,X
+	  STA SKE_TEMP_
+	  LDY #$00
+?AO	  DEY
+	  LDA (SKEDUL0_),Y
+	  PHA	      ; stos
+	  CPY SKE_TEMP_
+	  BNE ?AO
+;
+	  LDA SKE_SGT2_+1
+	  BEQ ?TU	     ; czy ten kawalek pracowal na
+			     ; potrzeby SKE_SIG_?
+	  JMP SKE_SIG_?AUT
+?TU	  JMP SKE_MLTI_?AUT ; i wracamy ze skedulera
+			     ; (po drodze zmieniajac status
+			     ; na $04:"running" nowemu procesowi)
+;
+;
+SB.PAGE64_	= $7F00	     ; tablica alokacji banku.
+;
+SKE_TRM_
+			; SKEDULER - terminacja procesu, ktory
+			;            jeszcze nie jest aktywny.
+		CPX CURPRO_   ; czy na pewno nie jest?
+		BNE ?STORE
+?IDLE		JMP SKE_TER_
+?STORE		STX SKE_NEXT_   ; numer procesu do sterminowania
+			     ; sobie zestorujemy
+		LDX CURPRO_     ; pobieramy aktualny
+		BNE ?NOTIDLE    ; czy to IDLE process?
+		LDA #$03	     ; STATE:='ready'
+		STA PR.STATE_,X
+		LDX SKE_NEXT_
+		JMP ?IDLE
+?NOTIDLE LDA #$00
+	  STA SKEDUL0_	   ; zerujemy sobie zmienna robocza
+	  LDA PR.ZERO_,X  ; ladujemy adres strony zerowej
+	  STA SKEDUL0_+1
+	  INC SKEDUL0_+1  ; zinkrementowany o 1 da adres
+			   ; przestrzeni na stos procesu
+	  TXA
+	  TAY	   ; 'slot' procesu do Y
+	  TSX
+	  TXA
+	  STA PR.STACK_,Y  ; stack pointer do tablicy
+	  PHA	    ; i na stos
+	  TYA
+	  TAX	    ; 'slot' procesu z powrotem do X
+	  PLA
+	  TAY	    ; wskaznik stosu do Y
+;
+?LUP	  PLA	    ; sciagamy ze stosu kolejne
+			    ; elementy
+	  STA (SKEDUL0_),Y  ; i zapisujemy je w przestrzeni
+			     ; zaalokowanej na stos
+	  INY
+	  BNE ?LUP	     ; tak dlugo, az cos jest na
+			     ; stosie
+;
+	  DEC SKEDUL0_+1    ; przenosimy sie na przestrzen
+			     ; zaalokowana na zeropage
+?SIUP	  LDA $00,Y         ; pobieramy element z ZP
+	  STA (SKEDUL0_),Y  ; i wrzucamy na przechowanie
+	  INY
+	  BNE ?SIUP	     ; 256 razy (cala ZP)
+; zestorowano.
+		LDX SKE_NEXT_   ; kogo terminujemy?
+;
+SKE_TER_		
+			; SKEDULER - terminacja procesu
+?NOPAR
+		STX SKE_TEMP_   ; slot aktualnego procesu tutaj
+		LDX #$00
+		STX SKE_SGT2_+1 ; flage dla ?SWITCH resetujmy
+		LDY #$FF
+?LUP		DEY
+		LDA SB.PAGE64_,Y ; sprawdzamy czy dana strona jest
+			      ; zaalokowana dla naszego procesu
+		CMP SKE_TEMP_
+		BNE ?INK
+		TXA
+		STA SB.PAGE64_,Y ; jezeli tak, to zerujemy.
+?INK		CPY #$C0
+		BNE ?LUP
+		TXA	      ; zero do akumulatora
+		LDX SKE_TEMP_
+		STA PR.STATE_,X  ; STATE:="nonexistent"
+		LDA PR.TTY_,X
+		BMI ?PARENT
+		TAX
+		LDA #$FF
+		STA TTYOWNT_,X   ; usuwamy ownership danej konsoli
+		LDX SKE_TEMP_    ; i przywracamy slot sterminowanego
+; no i	po procesie.
+; teraz szukamy nowego chetnego.
+; najpierw	ewentuanego parenta:
+?PARENT	LDA PR.PARENT_,X
+		TAX
+		LDA PR.IOQUE_,X
+		CMP #$FD	 ; czy czeka na terminacje potoma?
+		BNE ?HRUM
+		LDA PR.STATE_,X
+		AND #$0F
+		CMP #$05	 ; i czy faktycznie czeka?
+		BNE ?CHRUM
+		STX SKE_NEXT_
+		LDX SKE_TEMP_
+		LDA PR.TTY_,X
+		TAX
+		LDA SKE_NEXT_
+		STA TTYOWNT_,X ; przywracamy 'wlasnosc' konsoli
+			    ; parentowi.
+		JMP SKE_MLTI_?SWITCH
+?CHRUM	  LDX SKE_TEMP_
+?HRUM	  CPX MAXPROC_	 ; porownujemy aktualny 'slot' procesu
+			 ; z maksymalna liczba procesow w
+			 ; systemie
+	  BNE ?PRUK     ; jezeli to 'ostatni', to resetujemy
+	  LDX #$FF      ; go na 0.
+?PRUK	  INX	 ; w taki niebezposredni sposob :)
+?JEDZ	  LDA PR.STATE_,X  ; sprawdzamy stan procesu w
+			    ; kolejnym (cycle) slocie
+	  AND #$0F	    ; ale tylko bity 0-3
+	  CMP #$03
+	  BNE ?HRUM	    ; inkrementujemy az znajdziemy
+; znalezlismy, wiec przelaczamy
+?JUZ	  STX SKE_NEXT_
+	  JMP SKE_MLTI_?SWITCH
+;
+SKE_MON_
+	  JMP SKE_RET_
+;
+SKE_SIG_
+;	05.06.2006
+;	obsluga sygnalow
+;
+	LDX	#$FF
+?AE	INX		  ; przeszukujemy procesy w
+	LDA	PR.STATE_,X  ; poszukiwaniu tego, na ktorego
+	AND	#$80	  ; <- czeka sygnal! :)
+	BNE	?AO
+	CPX	MAXPROC_
+	BNE	?AE
+?ECH	LDA	RUNLEVEL_
+	AND	#$DF	; kasujemy bit 5 (signal waiting)
+	STA	RUNLEVEL_
+; wady	takie same jak	dla SKE_IOC_, tez do zastapienia
+; kolejkami FIFO.
+	LDA	#$10	   ; sprawdzamy bit 4 RUNLEVEL_, czyli
+	BIT	RUNLEVEL_	   ; czy podczas obslugi sygnalow
+			   ; manipulowano CURPRO_?
+	BEQ	?BLURP
+	LDX	SKE_SIGT_	   ; wczytujemy stary slot procesu,
+			   ; z okresu z przed obslugi sygnalow
+			   ; celem zachowania rownowagi
+	STX	CURPRO_
+?BLURP	JMP	SKEDUL_?OGIEN
+?AO	LDA	PR.SIGNAL_,X  ; i sprawdzamy, co to za sygnaly...
+	CMP	#$09	   ;  9 - SIGKILL
+	BNE	?WAK	   ;
+	LDA	#$06	   ; to wtedy KILOWAC!
+?ARGH	STA	PR.STATE_,X
+	JMP	SKE_SIG_	   ; czy jeszcze jakies sygnaly?
+?WAK	CMP	#$11	   ; 17 - SIGSTOP
+	BNE	?PLOFT
+	LDA	#$08	   ; STATE:=$08 "stopped"
+	JMP	?ARGH	   ; zapisz stan i wylaz
+?PLOFT	CMP	#$13	   ; 19 - SIGCONT
+	BNE	?GNOFT
+	LDA	#$03	   ; STATE:=$03 "ready"
+	JMP	?ARGH	   ; zapisz stan i wylaz
+?GNOFT	TAY		   ; sygnal do Y
+		DEY	    ; odejmujemy 1 od Y, bo tak jest
+			    ; tabela zbudowana (1 to ,0)
+		LDA SIGTBL_,Y  ; odczytujemy offset do SIGVECx_
+		ASL
+		ASL	    ; sprawdzamy, czy nie $FE-$FF
+		BCS ?DUNNO
+		ASL
+		ASL
+		ASL
+		ASL	    ; *64
+		STA SKEDUL0_   ; do zmiennej
+		LDA #>SIGVEC1_ ; MSB SIGVEC1_
+		STA SKEDUL0_+1 ; do zmiennej
+		BCC ?RAZ	    ; SIGVEC1_ wystarczy
+		INC SKEDUL0_+1 ; a tu SIGVEC2_ na miejscu jest
+?RAZ		TXA	    ; numer procesu do A
+		ASL	    ; *2, bo dwubajtowe sa wektory
+		TAY	    ; do Y, bo tym bedzemy indeksowac
+		LDA (SKEDUL0_),Y
+		STA SKE_SGT2_
+		INY
+		LDA (SKEDUL0_),Y
+		STA SKE_SGT2_+1  ; teraz w SKE_SGT2_ mamy adres
+			      ; procedury obslugi tego sygnalu
+		BEQ ?DUNNO	   ; czy aby sygnal jest obslugiwany?
+			   ; (jezeli nie, to MSB bedzie $00,
+			   ; wiec wylazimy i zapominamy o nim).
+		CPX CURPRO_
+		BEQ ?TENSAM   ; czy aktualnie mamy kontekst
+			   ; procesu ktory pragnie sygnalu?
+		LDY CURPRO_
+		STY SKE_SIGT_
+		LDA PR.STATE_,Y
+		AND #$F0	      ; zerujemy bity 0-3
+		CMP #$06
+		BEQ ?ZABIJ
+		ORA #$03	      ; zapalamy je na $03, czyli:
+		STA PR.STATE_,Y  ; zmieniamy stan na $03:'ready'
+?ZABIJ		STY SKE_TEMP_  ; dla zgodnosci ze ?STORE
+		JMP SKE_MLTI_?STORE
+			      ; przelaczamy kontekst procesow
+			      ; korzystajac z procedur w
+			      ; SKE_MLTI_
+?AUT		LDA PR.STATE_,X
+		AND #$70	      ; zerujemy bity 0-3 i bit 7
+		ORA #$04	      ; zapalamy je na $04, czyli:
+		STA PR.STATE_,X  ; zmieniamy stan na $04:"running"
+?TENSAM
+		LDA SKE_SGT2_+1
+		PHA	   ; MSB procedury obslugi
+		LDA SKE_SGT2_
+		PHA	   ; LSB procedury obslugi
+		LDA #$20
+		PHA	   ; flagi procesora
+		LDA #$00
+		STA SKE_SGT2_+1 ; resetujemy flage dla SKE_MLTI_
+		PHA
+		PHA
+		PHA	   ; rejestry zerujemy
+		JMP SKE_RET_  ; i wychodzimy ze skedulera.
+			   ; RTI powinno skoczyc do naszej
+			   ; procedury. wyjscie z niej przez
+			   ; SKE_RET_ powinno nastapic.
+?DUNNO	LDA	PR.STATE_,X   ; sygnal nieznany, wiec:
+	AND	#$7F	   ; kasujemy bit 7 (sig waiting)
+	STA	PR.STATE_,X
+	JMP	SKE_SIG_	   ; i sprawdzamy, czy jakis inny
+			   ; czeka w kolejce
+;
+SKE_IOC_
+;	04.06.2006
+;	obsluga i/o critical operacji
+	LDX	#$FF
+?AE	INX
+	LDA	PR.STATE_,X
+	AND	#$40
+	BNE	?AO
+	CPX	MAXPROC_
+	BNE	?AE
+	LDA	RUNLEVEL_
+	AND	#$BF	; kasujemy bit 6 (i/o critical)
+	STA	RUNLEVEL_
+; ma to swoje wady, ale potem nalezy zamienic wszystkie te
+; bity	normalnymi kolejkami FIFO...
+	JMP	SKEDUL_?DALI
+?AO	TXA
+	CMP	CURPRO_  ;	czy aby nie pojawil sie input zaraz
+		         ;	przy wywlaszczaniu?
+	BNE	?NIE
+	LDA	PR.STATE_,X
+	AND	#$B0     ;	kasujemy bit i/o ready
+	ORA	#$04     ;	STATE:=$04 'running'
+	STA	PR.STATE_,X
+	JMP	SKE_RET_ ;	no i niech wraca do tego procesu
+?NIE	TAX	         ;	numer procesu co czeka na i/o do X, bo
+		         ;	tam oczekuje go ?STORE ze SKE_MLTI_
+	LDY	CURPRO_	 ; stary proces bedze wywlaszczony...
+	LDA	PR.STATE_,Y
+	AND	#$F0
+	ORA	#$03     ;	STATE:=$03 'ready'
+	STA	PR.STATE_,Y
+	LDA	PR.STATE_,X
+	AND	#$BF     ;	kasujemy bit i/o ready
+	STA	PR.STATE_,X
+	JMP	SKE_MLTI_?STORE ; wykonac normalne przelaczenie,
+			     ; z zestorowaniem starego procesu
+			     ; wlacznie
+;
+; 19.05.2006 - tutaj kolejkowanko procesow ktore czekaja
+;		    na wynik operacji i/o
+;
+SKE_QUE_
+	LDA	CURPRO_
+;	PHA		  ; slot procesu na stos
+	TAX
+;	LDA	PR.IOQUE_,X  ; ktory dewajs kolejkowal?
+;	TAY
+	LDA	PR.STATE_,X
+	AND	#$F0	  ; zerujemy bity 0-3
+	ORA	#$05	  ; STATE:='waiting for io'
+	STA	PR.STATE_,X
+;	PLA
+;	STA	IOQUE_,Y	  ; i na odpowiedniej pozycji
+			  ; w kolejce wpisujemy, ze to
+			  ; dany proces oczekuje.
+	JMP	SKE_MLTI_?CZYINNI  ; i oddajemy zasoby innemu
+;
+;
+SKE_IDLE_		; system idle process. slot $00, nie ma
+			; przydzialu pamieci ani nie storuje
+			; stosu ni strony zerowej. jego kod
+			; jest w calosci tutaj.
+	  PLA
+	  PLA
+	  PLA ; sciagamy rejestry
+	  PLA
+	  STA SKE_TEMP_
+	  PLA
+	  PLA ; oraz adres powrotu i flagi procka
+	  LDA #>?LUP
+	  PHA
+	  LDA #<?LUP
+	  PHA
+	  LDA SKE_TEMP_
+;	  LDA #$20
+	  PHA
+	  PHA
+	  PHA
+	  PHA
+	  LDA #$00
+	  STA CURPRO_	 ; ze niby proces IDLE chodzi
+	  JMP SKE_RET_
+?LUP	  INC IDLECNT_
+	  LDA IDLECNT_
+	  ROR
+	  BCC ?WAKWAK
+	  ROR
+	  BCC ?WAKWAK
+	  ROR
+	  BCC ?WAKWAK
+	  LDA VISTTY_
+	  ASL
+	  TAX
+	  LDA TTYTBL_,X
+	  STA SKEDUL0_
+	  LDA TTYTBL_+1,X
+	  STA SKEDUL0_+1
+	  LDY TRIBCNT_
+	  INY
+	  CPY #$04
+	  BNE ?MMUP
+	  LDY #$00
+?MMUP	  STY TRIBCNT_
+	  LDA TRIBUTE_,Y
+	  LDY #$00
+	  STA (SKEDUL0_),Y
+?WAKWAK  BRK
+	  BRK  ; wywolujemy skeduler od razu, nie ma co marnowac
+		   ; zasobow na bezsensowne petle...
+	  JMP ?LUP
+TRIBCNT_ .BY $00	       ; tribute to 194.42.40.250
+TRIBUTE_ .SB '\'
+	  .SB '|'
+	  .SB '/'
+	  .SB '-'
+IDLECNT_ .BY $00
+;
+SKE_RET_
+	  LDA RUNLEVEL_
+	  AND #$7F
+	  STA RUNLEVEL_ ; kasujemy bit 7, bo juz nie
+			 ; pracujemy...
+SKE_RUN_
+	  PLA
+	  TAY
+	  PLA
+	  TAX
+	  PLA
+	  RTI           ; wychodzimy wychodzimy
+;
+; SKEduler	INI
+;	10.06.2006
+;	podpina skeduler pod wektory przerwan. ustawia
+;	RUNLEVEL_ na 'single mode'.
+;
+SKEINI_
+		LDA #$01
+		STA RUNLEVEL_
+		LDY #<SKEDBRK_
+		LDX #>SKEDBRK_
+		STY $206
+		STX $207 ;	VBREAK
+		LDY #<SKEDUL_
+		LDX #>SKEDUL_
+		LDA #$07
+		JSR SETVBV	; VBLANK DEFFERED
+		RTS
+;
+;
+; BINARY INCLUDES
+;	ROBB.OBJ	- procedury obslugi TTY_
+;	ROBZ.OBJ	- zmienne i stale systemowe nie na
+;			  stronie zerowej
+;	ROBC.OBJ	- MALLOC_ i PRLOAD_
+;	ROBD.OBJ	- FORK_, EXEC_, WRITE_, procedury obslugi
+;			  sygnalow (dla usera), troche initow.
+;
+		.BI ROBB.OBJ
+		.BI ROBC.OBJ
+		.BI ROBD.OBJ
+		.BI ROBZ.OBJ
+;
+; autostart kodu testowego
+;
+		.OR $2e0
+		.BY <INITIALIZE
+		.BY >INITIALIZE
+;
+
+  

@@ -1,0 +1,202 @@
+; 05.06.2006
+;	aplikacja kill
+;
+		.OU D1:\XEUX\ROB10\KILL.20
+		.OR $2000
+; includes
+		.IN ROBI4.MAE   ; zmienne systemowe, wektory skokow
+		.IN ROBP3.MAE   ; adresy procedur z innych modulow
+;
+; PRINT_M
+;	23.09.2005
+;
+!!!PRINT_M_ .MD
+		JSR PRINT_P_
+		.BY :1 :2 :3 :4 :5 :6 :7 :8 :9 0
+		.ME
+;
+;
+CTAPT		PLA
+		BEQ ?USAGE
+		TAX	    ; ile mamy parametrow?
+		PLA
+		CMP #'-        ; czy -?
+		BNE ?USAGE
+		DEX
+		BEQ ?USAGE	    ; czy sa jeszcze parametry?
+		PLA	    ; pobieramy pierwsza cyfre sygnalu
+		CMP #'0
+		BCC ?USAGE
+		CMP #'9
+		BCC ?KO
+		BEQ ?KO
+		JMP ?USAGE
+?KO		STA SIGTXT	    ; i zapisujemy w SIGTXT (jako znak)
+		DEX
+		BEQ ?USAGE
+		PLA	    ; pobieramy druga cyfre
+		CMP #$20	    ; jest w ogole?
+		BNE ?DRUGA
+		LDA SIGTXT
+		STA SIGTXT+1
+		LDA #'0
+		STA SIGTXT	    ; przepisujemy 0 do dziesiatek, a
+			    ; liczbe wlasciwa do jednosci.
+		JMP PID	    ; i podazamy analizowac pida.
+?USAGE		JMP UZAGE
+?DRUGA		CMP #'0
+		BCC ?USAGE
+		CMP #'9
+		BCC ?OK
+		BEQ ?OK
+		JMP UZAGE
+?OK		STA SIGTXT+1   ; zapisujemy do jednosci (jako znak)
+		DEX
+		BEQ ?USAGE
+		PLA
+		CMP #$20
+		BNE ?USAGE
+PID		DEX
+		BEQ UZAGE	    ; czy sa parametry?
+		PLA	    ; pobieramy pierwsza cyfre PID'a
+		CMP #'0
+		BCC UZAGE
+		CMP #'9
+		BCC ?OK
+		BEQ ?OK
+		CMP #'A
+		BCC UZAGE
+		CMP #'F
+		BCC ?OK
+		BEQ ?OK
+		JMP UZAGE
+?OK		STA PIDTXT
+		DEX	    ; dalej sa?
+		BEQ UZAGE
+		PLA
+		CMP #'0
+		BCC UZAGE
+		CMP #'9
+		BCC ?KO
+		BEQ ?KO
+		CMP #'A
+		BCC UZAGE
+		CMP #'F
+		BCC ?KO
+		BEQ ?KO
+		JMP UZAGE
+?KO		STA PIDTXT+1
+		DEX
+		BNE UZAGE	    ; no jezeli sa dalej, to to jest
+			    ; blad
+;DEBUK
+		JSR TRNSIG
+		STA SIGN0
+		JSR TRNPID
+;		LDA SIGN0
+;		JSR NUM2SCR_
+;		LDA PROC0
+;		JSR NUM2SCR_
+;		PRINT_M_ $9B 'ok' $9B
+		LDX #$FF
+?LUPP		INX
+		LDA PR.PID_,X
+		CMP PROC0
+		BEQ FOUND
+		CPX MAXPROC_
+		BNE ?LUPP
+		JMP NOTFOUND
+UZAGE		PRINT_M_ 'usage: KILL -<signal> <PID>' $9B
+		PRINT_M_ '       signal in decimal, PID in hex' $9B $9B
+		JSR TERMINATE_
+FOUND		LDA SIGN0
+		JSR KILL_
+		BCS ?ERR
+		JMP EGZIT
+?ERR		CPX #$F9
+		BNE ?E1
+		PRINT_M_ 'err: F9 - process not running' $9B $9B
+		JSR TERMINATE_
+?E1		CPX #$F8
+		BNE ?E2
+		PRINT_M_ 'err: F8 - higher priority signal waiting' $9B $9B
+		JSR TERMINATE_
+?E2		CPX #$F7
+		BNE ?UNKN
+		PRINT_M_ 'err: F7 - cannot send to idle process' $9B $9B
+		JSR TERMINATE_
+?UNKN		TXA
+		PHA
+		PRINT_M_ 'err: '
+		PLA
+		JSR NUM2SCR_
+		PRINT_M_ $9B $9B
+EGZIT		JSR TERMINATE_
+		JMP EGZIT
+NOTFOUND	PRINT_M_ 'no such process' $9B $9B
+		JMP EGZIT
+;
+PROC0		.BY $00
+SIGN0		.BY $00
+SIGTXT		.WO $0000
+PIDTXT		.WO $0000
+;
+; TRaNslate SIGnal
+; bierze w	SIGTXT dwucyfrowa liczbe w TXT, przelicza na
+; wartosc w zakresie 0-99 i zwraca w akumulatorze.
+;
+TRNSIG		LDA SIGTXT
+		LDX #$00
+		STX GETNUM0
+		SEC
+		SBC #$30 ;	A-$30 -> cyfra
+		PHA
+		CLC
+		ASL
+		STA GETNUM0
+		PLA
+		ASL
+		ASL
+		ASL
+		CLC
+		ADC GETNUM0
+		STA GETNUM0 ;gotowe "dziesiatki"
+		LDA SIGTXT+1
+		SEC
+		SBC #$30 ;	A-$30 -> cyfra
+		CLC
+		ADC GETNUM0
+		RTS
+GETNUM0	.BY $00
+; ta jest niekonsekwentna, bo przyjmuje w PIDTXT, a zwraca juz
+; w PROC0.	:)
+TRNPID		LDA PIDTXT
+		CMP #'9
+		BCC ?DEC
+		BEQ ?DEC
+?HEX		SEC
+		SBC #55	     #'A - 55 = 10
+?UPPER		ASL
+		ASL
+		ASL
+		ASL
+		STA PROC0
+		JMP NEXT
+?DEC		SEC
+		SBC #$30	     #'0 - $30 = 0
+		JMP ?UPPER
+NEXT		LDA PIDTXT+1
+		CMP #'9
+		BCC ?DEC
+		BEQ ?DEC
+?HEX		SEC
+		SBC #55
+?LOWER		CLC
+		ADC PROC0
+		STA PROC0
+		JMP ?EXIT
+?DEC		SEC
+		SBC #$30
+		JMP ?LOWER
+?EXIT		RTS
+;

@@ -1,0 +1,170 @@
+;
+; zmienne systemowe (ATARI OS)
+;
+SAVMSC		= 88	; poczatek pamieci ekranu
+MEMTOP		= 741	; gorna granica dostepnej pamieci
+SDLSTL		= 560	; shadow rejestru ANTICa do ktorego
+			; podajemy adres display listy
+OLDKBC		= $02F2	; poprzednio nacisniety klawisz
+KBCODES	= $02FC	; ostatnio nacisniety klawisz
+VIMIRQ		= $0216	; wektor obslugi przerwan IRQ
+IRQENS		= $10
+VKEYBD		= $0208	; wektor obslugi klawiatury
+SETVBV		= $E45C	; wektor procedury zmiany przerwania
+			; VBLANK w 'bezpieczny' sposob.
+; IOCB	(Atari OS)
+;
+ICCHID		= $0340 ; numer identyfikacyjny: $FF - zamkniety
+ICDNO		= $0341 ; numer urzadzenia np. 3 dla "D3:NAZWA"
+		        ; ustawiane automatycznie przez system
+ICCMD		= $0342 ; kod operacj (rozkaz):
+		        ;	$03 - OPEN
+		        ;	$05 - GET RECORD
+		        ;	$07 - GET BYTES
+		        ;	$09 - PUT RECORD
+		        ;	$0B - PUT BYTES
+		        ;	$0C - CLOSE
+		        ;	$0D - STATUS
+ICSTAT		= $0343 ; status operacji. 1 - sukcs, ujemne - blad
+ICBUFA		= $0344 ; adres bufora dla operacji. dla OPEN,
+		        ; STATUS i specjalnych wskazuje nazwe pliku
+ICPUTB		= $0346 ; zmniejszony o 1 adres procedury wysylania
+		        ; 1 bajtu do urzadzenia. ustawiany przez
+		        ; system w czasie otwierania pliku
+ICBUFL		= $0348 ; wielkosc bufora dla operacji. jezeli 0,
+		        ; to bajt przekazywany jest w akumulatorze
+ICAX1		= $034A ; pierwszy bajt pomocniczy. przy otwieraniu
+		        ; rodzaj dostepu:
+		        ;	$04 - odczyt, $08 - zapis
+		        ;	$09 - dopisywanie, $0C - zapis i odczyt
+ICAX2		= $034B ; drugi bajt pomocniczy. np. numer trybu
+		        ; graficznego przy otwieraniu ekranu
+ICAX3		= $034C
+ICAX4		= $034D
+ICAX5		= $034E
+ICAX6		= $034F ; pozostale bajty pomocnicze.
+JCIOMAIN	= $E456 ; przy wywolaniu odpowiedni IOCB ma byc
+		        ; wypelniony, a w X numer kanalu *16.
+;
+; rejestry	sprzetowe (ATARI)
+;
+KBCODE		= $D209	; kod nacisnietego klawisza
+IRQST		= $D20E	; przerwania irq
+PORTB		= $D301	; rejestr kontrolujacy przelaczanie
+			; bankow dodatkowej pamieci (+ROM)
+;
+; zmienne robocze
+;
+EKRAN_		= $82	; zmienna 'robocza' procedur
+			; pracujacych na ekranie
+SCRTMP_	= $84	; zmienna 'robocza' dla procedury
+			; scrollujacej ekran
+TEMP0_		= $86	; zmienna tymczasowa na stronie 0
+			; wykorzystuje ja !!!PRINT_M i PRINT_P
+			; oraz WALL_
+KLAW_		= $88	; zmienna 'robocza' procedur pracujacych
+			; na buforze klawiatury (w przerwaniach)
+KONS_		= $90	; zmienna 'robocza' procedur pracujacych
+			; na konsoli (w przerwaniach IRQ)
+SK_TEMP_	= $92	; zmienna 'robocza' skedulera - pracuje
+			; w VBLANKu
+TMPMEMXY_	= $94	; 2B
+ATACHR_	= $96	; 1B
+GETKBUF_0_	= $97	; 1B
+TAJMER12_	= $98
+TAJMER13_	= $99
+TAJMER14_	= $9A	; 3B w sumie na tajmery dla procesu
+			; co bedzie mierzyl performens
+LOADER0_	= $9B	; 2B na zmienna dla loadera procesu.
+LOADER1_	= $9D	; 2B kolejna zmienna PRLOAD_
+LOADER2_	= $9F	; 2B i jeszcze jedna
+LOADER3_	= $A1	; 2B i tu taka malutka
+SKEDUL0_	= $02	; 2B robocza skedulera druga
+DSTAT_		= $A5	; 1B TTY: display status
+CHAR_		= $A6	; 1B TTY: ostatnio read/written char.
+SIGTMP0_	= $A7	; 2B SIGIVEC: zmienna robocza do
+			;    odczytywania wektora procki sygnalu
+PRLPRN_	= $A9	; 1B PRLOAD_: liczba parametrow do
+			;    przekazania proceswi
+PRLPAX_	= $AA	; 2B PRLOAD_: adres bufora parametrow
+PRFNAME_	= $AC	; 2B PRREAD_: adres nazwy pliku do
+			;    wczytania.
+;
+; zmienne testowe (strona 0)
+;
+; zmienne 'systemowe' (XEUX) - wymagajace strony zerowej
+;
+TTY_		= $80	; zmienna 'systemowa' - adres
+			; poczatku pamieci ekranu dla aktualnej
+			; konsoli wirtualnej
+;
+; /zmienne	nie potrzebujace znajdowac sie na stronie 0/
+; w calosci opisane i	obkomentowane w ROBZ2.MAE, tutaj
+; tylko adresy zmiennych i tabel jako naglowki.
+;
+MAXCOL_	= $9700
+MAXROW_	= $9701
+COLCRS_	= $9702
+ROWCRS_	= $9703
+LMARGN_	= $9704
+RMARGN_	= $9705
+MEMTOP_	= $9706
+APPMHI_	= $9708
+ACTTTY_	= $970A
+VISTTY_	= $970B
+CURPRO_	= $970C
+LASTPID_	= $970D
+RUNLEVEL_	= $970E
+MAXPROC_	= $970F
+TEMP1_		= $9710
+TEMP2_		= $9711
+PRREADL_	= $9712 ; 1B
+MAXTTYS_	= $9713 ; 1B
+BANKTBL_	= $9800
+BANKNUM_	= $9805
+PR.PID_	= $9900
+PR.STATE_	= $9920
+PR.PRIOR_	= $9940
+PR.CREDI_	= $9960
+PR.STACK_	= $9980
+PR.BANK_	= $99A0
+PR.TTY_	= $99C0
+PR.PAGE_	= $99E0
+PR.ZERO_	= $9A00
+PR.PARENT_	= $9A20
+PR.SIGNAL_	= $9A40
+PR.IOQUE_	= $9A60
+IOQUE_		= $9A80 ; 16 B
+TTYOWNT_	= $9A90 ; 4 B
+TMPSPACE_	= $A100 ; BYLO $9D00. ALE ZMIENIAM NA RAZIE...
+TMPSPACF_	= $9E00
+SIGVEC1_	= $9F00
+SIGVEC2_	= $A000
+SIGTBL_	= $A0C0 ; 32B - 05.06.2006
+SIG.HUP_	= $9F00
+SIG.TERM_	= $9F40
+SIG.IO_	= $9F80
+SIG.USR1_	= $9FC0
+SIG.USR2_	= $9A00 ; takie dodatkowe wektory, zeby latwiej
+		        ; to czyscic w PRLOAD_
+TTYTBL_	= $9B00
+DLIST_		= $9B08
+MXCOLT_	= $9B0A
+MXROWT_	= $9B0E
+CLCRST_	= $9B12
+RWCRST_	= $9B16
+LMRGNT_	= $9B1A
+RMRGNT_	= $9B1E (4B)
+PR.NAME_	= $9C00 ; 256B
+;
+; 15.05.2006 - praca przy edytorze, ROBB2.MAE, RETURM_ i spolka
+;
+;DSTAT_	 = $9712 ;	1B - display status and keyboard register
+		        ;	    used by the display handler
+;;DINDEX_	  = $9713 ; 1B - display mode / current screen mode
+;;OLDCHR_	  = $9714 ; 1B - value of character under the cursor
+;;CRSINH_	  = $9715 ; 1B - cursor inhibit flag. zero = on;
+;CHAR_		 = $9716 ;	1B - internal code value for the most
+		        ;	    recent char read or written (TTY)
+;
+
